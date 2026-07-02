@@ -1,0 +1,3 @@
+IAMC Variable,IAMC Unit,IAMC Description,Variable
+Carbon Capture,Mt CO2/yr,"Carbon captured and stored via CCS",ccs_captured_co2_to_store
+Emissions|CO2,Mt CO2/yr,"Total CO2 emissions",emissions_total_co2_emissions

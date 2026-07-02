@@ -1,5 +1,7 @@
 .DS_Store
 *.RDS
+*.rds
+Data-Output/Data-Output.csv
 *.xlsx
 *.pdf
 .Rproj.user/
