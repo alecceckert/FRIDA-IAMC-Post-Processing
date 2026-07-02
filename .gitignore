@@ -1,3 +1,7 @@
 .DS_Store
 *.RDS
 *.xlsx
+*.pdf
+.Rproj.user/
+.Rhistory
+.RData
