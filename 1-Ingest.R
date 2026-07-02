@@ -25,6 +25,10 @@ Central_Series <- "means"   # Which summary-list element is the central series.
                              #   "defaultRun"   = reference run
                              #   "ciBounds_q50" = true median (ciBounds[, "0.5"])
 
+Ensemble_IDs <- c(1)         # Ensemble member ids to extract alongside the median.
+                             #   c()            = none (median only)
+                             #   e.g. c(1, 5, 100) pulls those three runs
+
 
 ## ** Ingest helpers
 
@@ -98,12 +102,21 @@ for (Folder in Scenario_Folders) {
     full.names = TRUE
   )
 
-  # [To add ensemble members for a variable:
-  #  bind_rows(Scenario_Data, Ingest_Ensemble(file, ids = c(1, 2, 3)))]
   Scenario_Data <- tibble()
   for (File in Median_Files) {
     Scenario_Data <- bind_rows(Scenario_Data, Ingest_Median(File))
   }
+
+  if (length(Ensemble_IDs) > 0) {
+    Ensemble_Files <- list.files(Folder, pattern = "\\.RDS$", full.names = TRUE)
+    Ensemble_Files <- Ensemble_Files[
+      !grepl("-fit uncertainty-completeEqually-weighted\\.RDS$", Ensemble_Files)
+    ]
+    for (File in Ensemble_Files) {
+      Scenario_Data <- bind_rows(Scenario_Data, Ingest_Ensemble(File, Ensemble_IDs))
+    }
+  }
+
   Scenario_Data <- mutate(Scenario_Data, Scenario = Scenario_Name)
 
   cat(Scenario_Name, "—",
