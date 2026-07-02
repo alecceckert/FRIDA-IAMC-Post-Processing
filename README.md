@@ -30,7 +30,8 @@ The output format adheres to IAMC timeseries data format guidelines. That follow
 
 | Model | Scenario | Region | Variable | Unit | YYYY1 | YYYY2 | YYYY... |
 |---|---|---|---|---|---|---|---|
-| FRIDA V3.1 | Policy Name | World | Variable Name | Units | XX.X | XX.X | ... |
+| FRIDA V3.1_median | Policy Name | World | Variable Name | Units | XX.X | XX.X | ... |
+| FRIDA V3.1_ensemble-1 | Policy Name | World | Variable Name | Units | XX.X | XX.X | ... |
 
 ## Process
 
@@ -38,9 +39,21 @@ The output format adheres to IAMC timeseries data format guidelines. That follow
 
 Loads all summary RDS files from `Data-Input/` and stacks into `All_Data`. One row per FRIDA variable, year, and scenario. Empty scenario folders are skipped. Saves to `Data-Output/1-All_Data.RDS`.
 
-Output Table from ingest follows the format:
+Set `Central_Series` in the Preamble to select the central value (`means`, `defaultRun`, or `ciBounds_q50`). Set `Ensemble_IDs` to pull specific ensemble members alongside the median — e.g. `c(1, 5, 100)`. Leave as `c()` for median only.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
-| policy_C400-lin | emissions_total_co2_emissions | median | 1980 | 23501.05 |
-| policy_C400-lin | ccs_captured_co2_to_store | median | 1980 | 0.14 |
+| policy_Scenario | frida_variable | median | YYYY | xx.xxx |
+| policy_Scenario | frida_variable | ensemble-1 | YYYY | xxx.xx |
+
+## 2. Calculate
+
+Derives composite IAMC variables and applies unit conversions. Each IAMC variable that requires processing has its own section. Derived rows are appended to `All_Data` under `calc_` names. Pass-through variables (no calculation needed) skip this stage and map directly in `Variable-Mapping.csv`. Saves to `Data-Output/2-All_Data_Calc.RDS`.
+
+## 3. Map
+
+Joins `All_Data` with `Mapping/Variable-Mapping.csv` to replace FRIDA variable keys with IAMC variable names and units. Add a row to `Variable-Mapping.csv` for each new variable — pass-throughs and `calc_` intermediates are handled identically. Unmapped variables are dropped. Saves to `Data-Output/3-IAMC_Data.RDS`.
+
+| IAMC Variable | IAMC Unit | IAMC Description | Variable |
+|---|---|---|---|
+| IAMC Variable Name | unit | Description | frida_variable |
