@@ -17,57 +17,65 @@ options(scipen = 999)
 Path_Input  <- "Data-Input"
 Path_Output <- "Data-Output"
 
-
 ## ** Constants
 
-Central_Series <- "means"   # Which summary-list element is the central series.
-                             #   "means"        = ensemble mean
-                             #   "defaultRun"   = reference run
-                             #   "ciBounds_q50" = true median (ciBounds[, "0.5"])
+# Run types to ingest. c() = all.
+#   Summary series: "means", "defaultRun", "ciBounds_q50"
+#   Ensemble members: "ensemble-1", "ensemble-50", etc.
 
-Ensemble_IDs <- c(1)         # Ensemble member ids to extract alongside the median.
-                             #   c()            = none (median only)
-                             #   e.g. c(1, 5, 100) pulls those three runs
+Selected_Runs <- c(
+  "means",
+  "defaultRun",
+  "ciBounds_q50",
+  "ensemble-1",
+  "ensemble-50"
+  #"ensemble-100"
+  )   
+
+## ** Derived from Selected_Runs
+
+All_Summary_Runs <- c("means", "defaultRun", "ciBounds_q50")
+Summary_Runs     <- if (length(Selected_Runs) == 0) All_Summary_Runs else intersect(Selected_Runs, All_Summary_Runs)
+
+Ensemble_Entries <- grep("^ensemble-", Selected_Runs, value = TRUE)
+Ensemble_IDs     <- if (length(Selected_Runs) == 0) NULL else as.integer(sub("^ensemble-", "", Ensemble_Entries))
+# NULL = all ensemble members in file; integer(0) = none
 
 
 ## ** Ingest helpers
 
-# Summary list -> tidy rows. Variable = file stem (not varName.orig). Scenario filled by caller.
-Ingest_Median <- function(file, Central_Series_Element = Central_Series) {
+# Summary list -> tidy rows for all three central series. Variable = file stem. Scenario filled by caller.
+Ingest_Median <- function(file) {
 
   Summary_List <- readRDS(file)
-
-  Central_Values <- if (Central_Series_Element == "ciBounds_q50") {
-    Summary_List$ciBounds[, "0.5"]
-  } else {
-    Summary_List[[Central_Series_Element]]
-  }
-
   Variable_Key <- sub("-fit uncertainty-completeEqually-weighted\\.RDS$", "", basename(file))
+  Years        <- as.integer(Summary_List$years)
 
-  tibble(
-    Scenario = NA_character_,
-    Variable = Variable_Key,
-    Run      = "median",
-    Year     = as.integer(Summary_List$years),
-    Value    = Central_Values
+  bind_rows(
+    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "means",
+           Year = Years, Value = Summary_List$means),
+    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "defaultRun",
+           Year = Years, Value = Summary_List$defaultRun),
+    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "ciBounds_q50",
+           Year = Years, Value = Summary_List$ciBounds[, "0.5"])
   )
 
 }
 
-# Ensemble df -> same shape as Ingest_Median. Run = id as character. Scenario filled by caller.
-Ingest_Ensemble <- function(file, ids) {
+# Ensemble df -> same shape as Ingest_Median. ids = NULL loads all members. Scenario filled by caller.
+Ingest_Ensemble <- function(file, ids = NULL) {
 
   Ensemble_DF  <- readRDS(file)
   Variable_Key <- sub("\\.RDS$", "", basename(file))
 
+  if (!is.null(ids)) Ensemble_DF <- filter(Ensemble_DF, id %in% ids)
+
   Ensemble_DF |>
-    filter(id %in% ids) |>
     pivot_longer(cols = -id, names_to = "Year", values_to = "Value") |>
     mutate(
       Scenario = NA_character_,
       Variable = Variable_Key,
-      Run      = as.character(id),
+      Run      = paste0("ensemble-", id),
       Year     = as.integer(Year)
     ) |>
     select(Scenario, Variable, Run, Year, Value)
@@ -104,10 +112,11 @@ for (Folder in Scenario_Folders) {
 
   Scenario_Data <- tibble()
   for (File in Median_Files) {
-    Scenario_Data <- bind_rows(Scenario_Data, Ingest_Median(File))
+    Scenario_Data <- bind_rows(Scenario_Data, filter(Ingest_Median(File), Run %in% Summary_Runs))
   }
 
-  if (length(Ensemble_IDs) > 0) {
+  Load_Ensemble <- is.null(Ensemble_IDs) || length(Ensemble_IDs) > 0
+  if (Load_Ensemble) {
     Ensemble_Files <- list.files(Folder, pattern = "\\.RDS$", full.names = TRUE)
     Ensemble_Files <- Ensemble_Files[
       !grepl("-fit uncertainty-completeEqually-weighted\\.RDS$", Ensemble_Files)
@@ -130,7 +139,12 @@ for (Folder in Scenario_Folders) {
 
 cat("\nAll_Data:", nrow(All_Data), "rows\n")
 cat("Year range:", min(All_Data$Year), "—", max(All_Data$Year), "\n")
-cat("Run values:", paste(unique(All_Data$Run), collapse = ", "), "\n")
+Run_Values <- unique(All_Data$Run)
+if (length(Run_Values) > 10) {
+  cat("Run values:", length(Run_Values), "distinct runs (", paste(head(Run_Values, 5), collapse = ", "), "... )\n")
+} else {
+  cat("Run values:", paste(Run_Values, collapse = ", "), "\n")
+}
 
 ## head(All_Data)
 ## summary(All_Data)
@@ -140,3 +154,4 @@ cat("Run values:", paste(unique(All_Data$Run), collapse = ", "), "\n")
 
 saveRDS(All_Data, file.path(Path_Output, "1-All_Data.RDS"))
 cat("\nSaved: Data-Output/1-All_Data.RDS\n")
+
