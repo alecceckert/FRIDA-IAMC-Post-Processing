@@ -85,12 +85,12 @@ Ingest_Ensemble <- function(file, ids = NULL) {
 
 ## * Stage 1: Ingest ##########################################################
 
-# Skip folders with no summary files (e.g. policy_CP while data is still incoming).
+# Skip folders with no RDS files at all (e.g. policy_CP while data is still incoming).
 All_Folders <- list.dirs(Path_Input, full.names = TRUE, recursive = FALSE)
 
 Scenario_Folders <- All_Folders[
   sapply(All_Folders, function(Scenario_Dir) {
-    length(list.files(Scenario_Dir, pattern = "-fit uncertainty-completeEqually-weighted\\.RDS$")) > 0
+    length(list.files(Scenario_Dir, pattern = "\\.RDS$")) > 0
   })
 ]
 
@@ -154,4 +154,3 @@ if (length(Run_Values) > 10) {
 
 saveRDS(All_Data, file.path(Path_Output, "1-All_Data.RDS"))
 cat("\nSaved: Data-Output/1-All_Data.RDS\n")
-
