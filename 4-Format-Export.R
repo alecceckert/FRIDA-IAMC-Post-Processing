@@ -22,14 +22,15 @@ cat("Loaded IAMC_Data:", nrow(IAMC_Data), "rows\n\n")
 
 ## ** Constants
 
-Model_Name    <- "FRIDA V3.1"  # confirm exact registered name for IIASA database
-Region_Name   <- "World"
+# Defaults apply only when not already set (e.g. by 0-Main.R).
+if (!exists("Model_Name"))  Model_Name  <- "FRIDA V3.1"  # confirm exact registered name for IIASA database
+if (!exists("Region_Name")) Region_Name <- "World"
 
 # Run values to include in the output. Use c(...) for multiple.
 #   Summary series: "means", "defaultRun", "ciBounds_q50"
 #   Ensemble members: "ensemble-1", "ensemble-5", etc.
 
-Reported_Runs <- c(
+if (!exists("Reported_Runs")) Reported_Runs <- c(
   "means",
   "defaultRun",
   "ciBounds_q50",
@@ -38,8 +39,8 @@ Reported_Runs <- c(
   )
 
 # Year range for output. NA = use full range in the data.
-Year_Start <- NA
-Year_End   <- NA
+if (!exists("Year_Start")) Year_Start <- NA
+if (!exists("Year_End"))   Year_End   <- NA
 
 
 ## * Stage 4: Format ##########################################################
