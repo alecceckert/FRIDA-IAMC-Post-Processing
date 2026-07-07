@@ -14,7 +14,8 @@ options(scipen = 999)
 
 ## ** Paths
 
-Path_Input  <- "Data-Input"
+# Defaults apply only when not already set (e.g. by 0-Main.R).
+if (!exists("Path_Input")) Path_Input <- "Data-Input"
 Path_Output <- "Data-Output"
 
 ## ** Constants
@@ -23,14 +24,14 @@ Path_Output <- "Data-Output"
 #   Summary series: "means", "defaultRun", "ciBounds_q50"
 #   Ensemble members: "ensemble-1", "ensemble-50", etc.
 
-Selected_Runs <- c(
+if (!exists("Selected_Runs")) Selected_Runs <- c(
   "means",
   "defaultRun",
   "ciBounds_q50",
   "ensemble-1",
   "ensemble-50"
   #"ensemble-100"
-  )   
+  )
 
 ## ** Derived from Selected_Runs
 
