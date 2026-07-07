@@ -45,24 +45,25 @@ reported run becomes its own Model value. That follows the following structure:
 0-Main.R holds every parameter that changes between runs and sources the four
 stages in order: 
 
-- `Path_Input` — `Data-Input` for real FRIDA output, `Data-Input/Test-Data` for placeholders
-- `Selected_Runs` — runs to ingest: any of `means`, `defaultRun`, `ciBounds_q50`, `ensemble-<id>`; `c()` = everything
-- `Model_Name`, `Region_Name` — output identity columns
-- `Reported_Runs` — subset of ingested runs that reach the output file
-- `Year_Start`, `Year_End` — output year range; `NA` = full range in the data
+- Path_Input — Data-Input for real FRIDA output, Data-Input/Test-Data for placeholders
+- Selected_Runs — runs to ingest: any of means, defaultRun, ciBounds_q50, ensemble-<id>; c() = everything
+- Baseline_Scenario — reference scenario for loss-vs-baseline variables (default policy_CP)
+- Model_Name, Region_Name — output identity columns
+- Reported_Runs — subset of ingested runs that reach the output file
+- Year_Start, Year_End — output year range; NA = full range in the data
 
-The stage scripts keep the same parameters as defaults behind `if
-(!exists(...))`, so each can still be run standalone in a fresh R session.
+The stage scripts keep the same parameters as defaults behind if
+(!exists(...)), so each can still be run standalone in a fresh R session.
 
 
 ### 1. Ingest
 
-- Loads all summary RDS files from `Data-Input/` and stacks into `All_Data`.
+- Loads all summary RDS files from Data-Input/ and stacks into All_Data.
 - One row per FRIDA variable, run, year, and scenario. Empty scenario folders
   are skipped.
-- Summary files contribute the three central series (`means`, `defaultRun`,
-  `ciBounds_q50`); ensemble files contribute one run per member id.
-- `Selected_Runs` filters both at ingest. Saves to `Data-Output/1-All_Data.RDS`.
+- Summary files contribute the three central series (means, defaultRun,
+  ciBounds_q50); ensemble files contribute one run per member id.
+- Selected_Runs filters both at ingest. Saves to Data-Output/1-All_Data.RDS.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
@@ -73,16 +74,16 @@ The stage scripts keep the same parameters as defaults behind `if
 
 - Derives composite IAMC variables and applies unit conversions.
 - Each IAMC variable that requires processing has its own section. Calculations.
-  are appended to `All_Data` under `calc_` names.
+  are appended to All_Data under calc_ names.
 
 ### 3. Map
 
-- Joins `All_Data` with `Mapping/Variable-Mapping.csv` to replace FRIDA variable
+- Joins All_Data with Mapping/Variable-Mapping.csv to replace FRIDA variable
   keys with IAMC variable names and units.
-- Add a row to `Variable-Mapping.csv`for each new variable.
+- Add a row to Variable-Mapping.csv for each new variable.
 - Unmapped variables are dropped. The last three columns document the FRIDA
   source, its units, and the transformation applied.
-- Saves to `Data-Output/3-IAMC_Data.RDS`.
+- Saves to Data-Output/3-IAMC_Data.RDS.
 
 | IAMC Variable | IAMC Unit | IAMC Description | Variable | FRIDA Variable | FRIDA Unit | Transformation |
 |---|---|---|---|---|---|---|
@@ -90,7 +91,7 @@ The stage scripts keep the same parameters as defaults behind `if
 
 ## 4. Format and Export
 
-- Filters to `Reported_Runs` and the `Year_Start`–`Year_End` horizon.
+- Filters to Reported_Runs and the Year_Start–Year_End horizon.
 - Appends the run name to the Model name, adds the Region and Scenario, pivots
   to the wide IAMC layout.  
 - Writes Data-Output/Data-Output.csv
