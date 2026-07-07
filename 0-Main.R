@@ -23,12 +23,14 @@ Path_Input <- "Data-Input"
 #   Summary series:   "means", "defaultRun", "ciBounds_q50"
 #   Ensemble members: "ensemble-1", "ensemble-50", etc.
 Selected_Runs <- c(
-  "means",
-  "defaultRun",
-  "ciBounds_q50",
-  "ensemble-1",
-  "ensemble-50"
+  "defaultRun"
 )
+
+## ** Calculation (2-Calculate.R)
+
+# Reference scenario for loss-vs-baseline variables (Policy Cost|Consumption
+# Loss). Must match a scenario folder name in Path_Input.
+Baseline_Scenario <- "policy_CP"
 
 ## ** Output format (4-Format-Export.R)
 
