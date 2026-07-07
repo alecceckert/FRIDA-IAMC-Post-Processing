@@ -7,14 +7,20 @@
 #   Each scenario folder holds one RDS per FRIDA variable under
 #     <scenario>/detectedParmSpace/PerVarFiles-RDS/<frida_variable>.RDS
 #   Each file is a data.frame: column `id` (run id) plus one column per year.
-#   ScenarioInput.csv maps a chosen run id to a sub-scenario label (a percentile,
-#   p0..p100); only those ids are read and the label becomes the Run. Stage 4
-#   appends the label to the scenario name (Scenario_subScenario).
+#   ScenarioInput.csv maps a chosen id to a sub-scenario label (e.g. STAp0..
+#   STAp100) that becomes the Run; Stage 4 appends it to the scenario name
+#   (Scenario_subScenario). An id is one of two kinds:
+#     - a numeric run id  -> that run is read from the per-var RDS above.
+#     - a statistic name  -> read from the fit-uncertainty plotData CSV instead
+#       (mean, median, defaultRun, or any Quantile* column; median = Quantile0.5).
+#       plotData holds one CSV per variable with a year column plus one column
+#       per statistic, under figures/CI-plots/completeEquallyWeighted/plotData/.
 #
 #   Only the FRIDA variables named in Mapping/Variable-Mapping.csv are loaded,
 #   so the large per-var files that never reach the output are never read.
 #
 #   Inputs:  Data-Input/<folder>/detectedParmSpace/PerVarFiles-RDS/*.RDS
+#            Data-Input/<folder>/figures/CI-plots/completeEquallyWeighted/plotData/*.csv
 #            Data-Config/FolderScenarioMap.csv (folder -> scenario name)
 #            Data-Config/ScenarioInput.csv     (id | subScenario | model)
 #            Mapping/Variable-Mapping.csv       (FRIDA Variable column)
@@ -40,6 +46,13 @@ Path_FolderMap <- file.path(Path_Config, "FolderScenarioMap.csv")
 # Per-var files live under this sub-path inside each scenario folder.
 PerVar_Subdir <- file.path("detectedParmSpace", "PerVarFiles-RDS")
 
+# Statistic runs (mean/median/defaultRun/Quantile*) are not in the per-var
+# parameter-space files; they come from the fit-uncertainty plotData CSVs, one
+# per FRIDA variable (a year column plus one column per statistic), named
+# "<stem><PlotData_Suffix>".
+PlotData_Subdir <- file.path("figures", "CI-plots", "completeEquallyWeighted", "plotData")
+PlotData_Suffix <- "-fit uncertainty-completeEqually-weighted.csv"
+
 
 ## ** Folder -> scenario name
 
@@ -51,12 +64,28 @@ Folder_Map <- read_csv(Path_FolderMap, show_col_types = FALSE)
 
 ## ** Sub-sample runs to ingest
 
-# run id -> sub-scenario label (percentile). Each listed run id becomes one Run,
-# selected identically from every scenario folder.
-Scenario_Input <- read_csv(Path_Scenarios, show_col_types = FALSE)
+# id -> sub-scenario label. Each listed id becomes one Run, selected identically
+# from every scenario folder. id is read as text so numeric run ids and
+# statistic ids (mean, median, defaultRun, Quantile0.5, ...) can share the column.
+Scenario_Input <- read_csv(Path_Scenarios, show_col_types = FALSE,
+                           col_types = cols(id = col_character()))
+
+# A statistic id names a plotData column directly (median is the 0.5 quantile);
+# every other id is a parameter-space run id read from the per-var RDS.
+Is_Stat_Id  <- function(id) id %in% c("mean", "median", "defaultRun") |
+                            str_starts(id, "Quantile")
+Stat_Column <- function(id) if_else(id == "median", "Quantile0.5", id)
+
+Run_Input  <- Scenario_Input |> filter(!Is_Stat_Id(id)) |> mutate(id = as.numeric(id))
+Stat_Input <- Scenario_Input |> filter(Is_Stat_Id(id))
+Need_Runs  <- nrow(Run_Input)  > 0
+Need_Stats <- nrow(Stat_Input) > 0
 
 cat("Sub-sample runs:", nrow(Scenario_Input), "—",
     paste(Scenario_Input$subScenario, collapse = ", "), "\n")
+if (Need_Stats)
+  cat("  statistic runs (from plotData):",
+      paste(Stat_Input$id, "->", Stat_Input$subScenario, collapse = ", "), "\n")
 
 
 ## ** FRIDA variables to load (driven by the mapping)
@@ -104,16 +133,45 @@ Ingest_PerVar <- function(file, sub_runs) {
     )
 }
 
+# plotData CSV -> tidy rows for the statistic runs only. Each stat id selects one
+# column (Stat_Column maps median -> Quantile0.5); its subScenario becomes the Run.
+Ingest_PerVar_Stat <- function(file, stem, stat_runs) {
+
+  Wide <- read_csv(file, show_col_types = FALSE)
+
+  Rows <- map(seq_len(nrow(stat_runs)), function(i) {
+    Column <- Stat_Column(stat_runs$id[i])
+    if (!Column %in% names(Wide)) {
+      cat("    ", stem, "— plotData has no column", Column, "— skipped\n")
+      return(NULL)
+    }
+    tibble(
+      Scenario = NA_character_,
+      Variable = stem,
+      Run      = stat_runs$subScenario[i],
+      Year     = as.integer(Wide$year),
+      Value    = Wide[[Column]]
+    )
+  })
+
+  bind_rows(Rows)
+}
+
 
 ## * Stage 1: Ingest ##########################################################
 
 # Only mapped folders that already have the per-var directory (data may still
 # be downloading for others; unmapped folders are ignored).
 Scenario_Folders <- file.path(Path_Input, Folder_Map$folder)
-Have_Data        <- dir.exists(file.path(Scenario_Folders, PerVar_Subdir))
+Have_PerVar      <- dir.exists(file.path(Scenario_Folders, PerVar_Subdir))
+Have_PlotData    <- dir.exists(file.path(Scenario_Folders, PlotData_Subdir))
+
+# Ingest a folder only once every requested source is present: per-var RDS for
+# run ids, plotData for statistic ids.
+Have_Data <- (!Need_Runs | Have_PerVar) & (!Need_Stats | Have_PlotData)
 
 if (any(!Have_Data)) {
-  cat("Mapped folders without per-var data yet:",
+  cat("Mapped folders without all requested data yet:",
       paste(Folder_Map$folder[!Have_Data], collapse = ", "), "\n")
 }
 
@@ -130,8 +188,14 @@ for (Folder in Scenario_Folders) {
   # Scenario name from the folder map, e.g. "C0to400-lin", "CP".
   Scenario_Name <- Folder_Map$scenario[Folder_Map$folder == basename(Folder)]
 
-  PerVar_Dir      <- file.path(Folder, PerVar_Subdir)
-  Available_Stems <- sub("\\.RDS$", "", list.files(PerVar_Dir, pattern = "\\.RDS$"))
+  PerVar_Dir   <- file.path(Folder, PerVar_Subdir)
+  PlotData_Dir <- file.path(Folder, PlotData_Subdir)
+
+  # Stems available from each source; their union drives what can be loaded.
+  PerVar_Stems    <- sub("\\.RDS$", "", list.files(PerVar_Dir, pattern = "\\.RDS$"))
+  PlotData_Stems  <- sub(PlotData_Suffix, "",
+                         list.files(PlotData_Dir, pattern = "\\.csv$"), fixed = TRUE)
+  Available_Stems <- union(PerVar_Stems, PlotData_Stems)
   To_Load         <- intersect(Needed_Variables, Available_Stems)
 
   Not_Yet <- setdiff(Needed_Variables, Available_Stems)
@@ -142,8 +206,21 @@ for (Folder in Scenario_Folders) {
 
   Scenario_Data <- tibble()
   for (Stem in To_Load) {
-    File <- file.path(PerVar_Dir, paste0(Stem, ".RDS"))
-    Scenario_Data <- bind_rows(Scenario_Data, Ingest_PerVar(File, Scenario_Input))
+
+    # Parameter-space run ids from the per-var RDS.
+    if (Need_Runs) {
+      RDS_File <- file.path(PerVar_Dir, paste0(Stem, ".RDS"))
+      if (file.exists(RDS_File))
+        Scenario_Data <- bind_rows(Scenario_Data, Ingest_PerVar(RDS_File, Run_Input))
+    }
+
+    # Statistic ids from the plotData CSV.
+    if (Need_Stats) {
+      CSV_File <- file.path(PlotData_Dir, paste0(Stem, PlotData_Suffix))
+      if (file.exists(CSV_File))
+        Scenario_Data <- bind_rows(Scenario_Data,
+                                   Ingest_PerVar_Stat(CSV_File, Stem, Stat_Input))
+    }
   }
 
   if (nrow(Scenario_Data) == 0) next

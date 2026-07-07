@@ -58,8 +58,9 @@ IAMC_Wide <- IAMC_Data |>
 
   mutate(
     Region   = Region_Name,
-    # Append the sub-scenario (percentile): "C400-lin" + "p50" -> "C400-lin_p50".
-    Scenario = paste0(Scenario, "_", Run)
+    # Append the sub-scenario (percentile): "C400-lin" + "STAp50" -> "C400-lin_STAp50".
+    # A blank sub-scenario (e.g. defaultRun) leaves the scenario name unsuffixed.
+    Scenario = if_else(is.na(Run) | Run == "", Scenario, paste0(Scenario, "_", Run))
   ) |>
 
   pivot_wider(

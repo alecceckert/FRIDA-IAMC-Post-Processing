@@ -17,8 +17,10 @@ https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOu
    `<folder>/detectedParmSpace/PerVarFiles-RDS/<frida_variable>.RDS`.
 2. List every input folder and its short scenario name in
    `Data-Config/FolderScenarioMap.csv`.
-3. List the run ids to report, their sub-scenario labels (percentiles), and the
-   Model name in `Data-Config/ScenarioInput.csv`.
+3. List the runs to report in `Data-Config/ScenarioInput.csv`. Each row's `id`
+   is either a parameter-space run id or a statistic name
+   (`mean`/`median`/`defaultRun`/`Quantile*`), paired with a sub-scenario label
+   and the Model name. See the ScenarioInput.csv section below for all options.
 4. Set the remaining run parameters in 0-Main.R.
 5. Run the pipeline from 0-Main.R.
 
@@ -38,26 +40,55 @@ set by `Baseline_Scenario` in 0-Main.R.
 
 ### Data-Config/ScenarioInput.csv
 
-One row per reported run. `id` is the run id to read from every per-variable
-file; `subScenario` is the label appended to each scenario name in the output
-(e.g. a percentile); `model` is the Model name to stamp.
+One row per reported run. Each row picks a data series with `id`, labels it with
+`subScenario`, and stamps a Model name with `model`. Run ids and statistic ids
+can be mixed in the same file.
+
+**`id`** — which series to read, one of two kinds:
+
+- **A run id** (a number, e.g. `37996`) — reads that single parameter-space run
+  from the per-variable files under
+  `<folder>/detectedParmSpace/PerVarFiles-RDS/`.
+- **A statistic name** — reads a precomputed statistic from the fit-uncertainty
+  plotData CSVs under
+  `<folder>/figures/CI-plots/completeEquallyWeighted/plotData/` instead. Allowed
+  values:
+  - `mean` — mean across the parameter space
+  - `median` — the 50th percentile (alias for `Quantile0.5`)
+  - `defaultRun` — the model's default (calibrated) run
+  - `Quantile<q>` — any quantile column present in the plotData files, where
+    `<q>` is the fraction: `Quantile0.025`, `Quantile0.165`, `Quantile0.5`,
+    `Quantile0.835`, `Quantile0.975`
+
+**`subScenario`** — the label appended to the scenario name in the output
+(`Scenario_subScenario`). Leave it **blank** to keep the scenario name unchanged
+(no suffix) — useful for a headline run such as `defaultRun`.
+
+**`model`** — the Model name to stamp in the output.
 
 | id | subScenario | model |
 |---|---|---|
-| \<run id> | p0 | Model Name |
-| \<run id> | p50 | Model Name |
-| \<run id> | p100 | Model Name |
+| defaultRun | | Model Name |
+| Quantile0.025 | STAquantile2.5 | Model Name |
+| Quantile0.5 | STAquantile50 | Model Name |
+| Quantile0.975 | STAquantile97.5 | Model Name |
+| \<run id> | STAp50 | Model Name |
+
+Statistic ids require the plotData CSVs; run ids require the per-variable RDS
+files. If a variable is missing the requested statistic column, or a source a
+row needs is not present in a folder, that piece is skipped with a note.
 
 ## Output Format
 
 The output format adheres to IAMC timeseries data format guidelines. Model comes
 from ScenarioInput.csv; the scenario name is the scenario label with the
-sub-scenario label appended (`Scenario_subScenario`):
+sub-scenario label appended (`Scenario_subScenario`), or the scenario label alone
+when the sub-scenario label is blank:
 
 | Model | Scenario | Region | Variable | Unit | YYYY1 | YYYY2 | YYYY... |
 |---|---|---|---|---|---|---|---|
-| Model Name | ScenarioA_p0 | World | Variable Name | Units | xx.x | xxx.x | ... |
-| Model Name | ScenarioA_p50 | World | Variable Name | Units | xx.x | xxx.x | ... |
+| Model Name | ScenarioA | World | Variable Name | Units | xx.x | xxx.x | ... |
+| Model Name | ScenarioA_STAquantile50 | World | Variable Name | Units | xx.x | xxx.x | ... |
 
 ## Process
 
@@ -80,21 +111,23 @@ standalone in a fresh R session.
 
 ### 1. Ingest
 
-- For each folder in FolderScenarioMap.csv, loads the per-variable files under
-  `<folder>/detectedParmSpace/PerVarFiles-RDS/` and stacks them into All_Data.
+- For each folder in FolderScenarioMap.csv, loads the series named in
+  ScenarioInput.csv and stacks them into All_Data. Run ids come from the
+  per-variable files under `<folder>/detectedParmSpace/PerVarFiles-RDS/`;
+  statistic ids (mean/median/defaultRun/Quantile*) come from the fit-uncertainty
+  plotData CSVs under `<folder>/figures/CI-plots/completeEquallyWeighted/plotData/`.
 - Only the FRIDA variables named in Mapping/Variable-Mapping.csv are read, so
   the large files that never reach the output are never loaded off disk. Folders
-  still downloading (no per-var directory yet, or missing variables) are skipped
-  with a note.
-- Each per-var file is a data.frame of `id` (run id) + one column per year. Only
-  the run ids in ScenarioInput.csv are kept; each id's `subScenario` label
-  becomes the Run. One row per FRIDA variable, run, year, and scenario.
+  still downloading (a needed source not present yet, or missing variables) are
+  skipped with a note.
+- Each id's `subScenario` label becomes the Run (a blank label leaves the
+  scenario name unsuffixed). One row per FRIDA variable, run, year, and scenario.
 - Saves to Data-Output/1-All_Data.RDS.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
-| ScenarioA | frida_variable | p0 | YYYY | xx.xxx |
-| ScenarioA | frida_variable | p50 | YYYY | xxx.xx |
+| ScenarioA | frida_variable | | YYYY | xx.xxx |
+| ScenarioA | frida_variable | STAquantile50 | YYYY | xxx.xx |
 
 ### 2. Calculate
 
