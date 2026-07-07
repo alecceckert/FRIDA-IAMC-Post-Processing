@@ -12,8 +12,12 @@ https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOu
 
 ## Instructions
 
-1. Create one folder for each scenario in the Data-Input folder
-2. Place relevant Ensemble or Median RDS files in the the relevant policy scenario.
+1. Create one folder for each scenario in the Data-Input folder using
+   scenario name as the folder name
+2. Place relevant Ensemble or Median RDS files in the the relevant policy
+   scenario. 
+3. Set the run parameters in 0-Main.R.
+4. Run pipeline from 0-Main.R
 
 ## Inputs
 
@@ -26,34 +30,68 @@ Scenario Inputs:
 
 ## Output Format
 
-The output format adheres to IAMC timeseries data format guidelines. That follows the following structure:
+The output format adheres to IAMC timeseries data format guidelines. Each
+reported run becomes its own Model value. That follows the following structure:
 
 | Model | Scenario | Region | Variable | Unit | YYYY1 | YYYY2 | YYYY... |
 |---|---|---|---|---|---|---|---|
-| FRIDA V3.1_median | Policy Name | World | Variable Name | Units | XX.X | XX.X | ... |
-| FRIDA V3.1_ensemble-1 | Policy Name | World | Variable Name | Units | XX.X | XX.X | ... |
+| FRIDA VX.X_means | Policy Name | World | Variable Name | Units | xx.s | xxx.x | ... |
+| FRIDA VX.X_ensemble-X | Policy Name | World | Variable Name | Units | xx.x | xxx.x | ... |
 
 ## Process
 
-## 1. Ingest
+### 0. Main
 
-Loads all summary RDS files from `Data-Input/` and stacks into `All_Data`. One row per FRIDA variable, year, and scenario. Empty scenario folders are skipped. Saves to `Data-Output/1-All_Data.RDS`.
+0-Main.R holds every parameter that changes between runs and sources the four
+stages in order: 
 
-Set `Central_Series` in the Preamble to select the central value (`means`, `defaultRun`, or `ciBounds_q50`). Set `Ensemble_IDs` to pull specific ensemble members alongside the median — e.g. `c(1, 5, 100)`. Leave as `c()` for median only.
+- `Path_Input` — `Data-Input` for real FRIDA output, `Data-Input/Test-Data` for placeholders
+- `Selected_Runs` — runs to ingest: any of `means`, `defaultRun`, `ciBounds_q50`, `ensemble-<id>`; `c()` = everything
+- `Model_Name`, `Region_Name` — output identity columns
+- `Reported_Runs` — subset of ingested runs that reach the output file
+- `Year_Start`, `Year_End` — output year range; `NA` = full range in the data
+
+The stage scripts keep the same parameters as defaults behind `if
+(!exists(...))`, so each can still be run standalone in a fresh R session.
+
+
+### 1. Ingest
+
+- Loads all summary RDS files from `Data-Input/` and stacks into `All_Data`.
+- One row per FRIDA variable, run, year, and scenario. Empty scenario folders
+  are skipped.
+- Summary files contribute the three central series (`means`, `defaultRun`,
+  `ciBounds_q50`); ensemble files contribute one run per member id.
+- `Selected_Runs` filters both at ingest. Saves to `Data-Output/1-All_Data.RDS`.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
-| policy_Scenario | frida_variable | median | YYYY | xx.xxx |
-| policy_Scenario | frida_variable | ensemble-1 | YYYY | xxx.xx |
+| policy_Scenario | frida_variable | means | YYYY | xx.xxx |
+| policy_Scenario | frida_variable | ensemble-X | YYYY | xxx.xx |
 
-## 2. Calculate
+### 2. Calculate
 
-Derives composite IAMC variables and applies unit conversions. Each IAMC variable that requires processing has its own section. Derived rows are appended to `All_Data` under `calc_` names. Pass-through variables (no calculation needed) skip this stage and map directly in `Variable-Mapping.csv`. Saves to `Data-Output/2-All_Data_Calc.RDS`.
+- Derives composite IAMC variables and applies unit conversions.
+- Each IAMC variable that requires processing has its own section. Calculations.
+  are appended to `All_Data` under `calc_` names.
 
-## 3. Map
+### 3. Map
 
-Joins `All_Data` with `Mapping/Variable-Mapping.csv` to replace FRIDA variable keys with IAMC variable names and units. Add a row to `Variable-Mapping.csv` for each new variable — pass-throughs and `calc_` intermediates are handled identically. Unmapped variables are dropped. Saves to `Data-Output/3-IAMC_Data.RDS`.
+- Joins `All_Data` with `Mapping/Variable-Mapping.csv` to replace FRIDA variable
+  keys with IAMC variable names and units.
+- Add a row to `Variable-Mapping.csv`for each new variable.
+- Unmapped variables are dropped. The last three columns document the FRIDA
+  source, its units, and the transformation applied.
+- Saves to `Data-Output/3-IAMC_Data.RDS`.
 
-| IAMC Variable | IAMC Unit | IAMC Description | Variable |
-|---|---|---|---|
-| IAMC Variable Name | unit | Description | frida_variable |
+| IAMC Variable | IAMC Unit | IAMC Description | Variable | FRIDA Variable | FRIDA Unit | Transformation |
+|---|---|---|---|---|---|---|
+| IAMC Variable Name | unit | Description | frida_variable | Module.Variable name | unit | operation and constant |
+
+## 4. Format and Export
+
+- Filters to `Reported_Runs` and the `Year_Start`–`Year_End` horizon.
+- Appends the run name to the Model name, adds the Region and Scenario, pivots
+  to the wide IAMC layout.  
+- Writes Data-Output/Data-Output.csv
+
