@@ -1,8 +1,23 @@
 # Description:
-#   Stage 1. Loads all summary RDS files from Data-Input/ and stacks them
-#   into All_Data. One row per FRIDA variable per year per scenario.
+#   Stage 1. For every scenario folder, loads the per-variable parameter-space
+#   RDS files, keeps only the sub-sampled parameter runs listed in
+#   ScenarioInput.csv, and stacks them into All_Data. One row per FRIDA variable
+#   per year per sub-sample run.
 #
-#   Inputs:  Data-Input/<scenario>/*-fit uncertainty-completeEqually-weighted.RDS
+#   Each scenario folder holds one RDS per FRIDA variable under
+#     <scenario>/detectedParmSpace/PerVarFiles-RDS/<frida_variable>.RDS
+#   Each file is a data.frame: column `id` (run id) plus one column per year.
+#   ScenarioInput.csv maps a chosen run id to a sub-scenario label (a percentile,
+#   p0..p100); only those ids are read and the label becomes the Run. Stage 4
+#   appends the label to the scenario name (Scenario_subScenario).
+#
+#   Only the FRIDA variables named in Mapping/Variable-Mapping.csv are loaded,
+#   so the large per-var files that never reach the output are never read.
+#
+#   Inputs:  Data-Input/<folder>/detectedParmSpace/PerVarFiles-RDS/*.RDS
+#            Data-Config/FolderScenarioMap.csv (folder -> scenario name)
+#            Data-Config/ScenarioInput.csv     (id | subScenario | model)
+#            Mapping/Variable-Mapping.csv       (FRIDA Variable column)
 #   Outputs: Data-Output/1-All_Data.RDS
 #            Columns: Scenario | Variable | Run | Year | Value
 
@@ -15,87 +30,96 @@ options(scipen = 999)
 ## ** Paths
 
 # Defaults apply only when not already set (e.g. by 0-Main.R).
-if (!exists("Path_Input")) Path_Input <- "Data-Input"
-Path_Output <- "Data-Output"
+if (!exists("Path_Input"))  Path_Input  <- "Data-Input"
+if (!exists("Path_Config")) Path_Config <- "Data-Config"
+Path_Output    <- "Data-Output"
+Path_Mapping   <- file.path("Mapping", "Variable-Mapping.csv")
+Path_Scenarios <- file.path(Path_Config, "ScenarioInput.csv")
+Path_FolderMap <- file.path(Path_Config, "FolderScenarioMap.csv")
 
-## ** Constants
-
-# Run types to ingest. c() = all.
-#   Summary series: "means", "defaultRun", "ciBounds_q50"
-#   Ensemble members: "ensemble-1", "ensemble-50", etc.
-
-if (!exists("Selected_Runs")) Selected_Runs <- c(
-  "means",
-  "defaultRun",
-  "ciBounds_q50",
-  "ensemble-1",
-  "ensemble-50"
-  #"ensemble-100"
-  )
-
-## ** Derived from Selected_Runs
-
-All_Summary_Runs <- c("means", "defaultRun", "ciBounds_q50")
-Summary_Runs     <- if (length(Selected_Runs) == 0) All_Summary_Runs else intersect(Selected_Runs, All_Summary_Runs)
-
-Ensemble_Entries <- grep("^ensemble-", Selected_Runs, value = TRUE)
-Ensemble_IDs     <- if (length(Selected_Runs) == 0) NULL else as.integer(sub("^ensemble-", "", Ensemble_Entries))
-# NULL = all ensemble members in file; integer(0) = none
+# Per-var files live under this sub-path inside each scenario folder.
+PerVar_Subdir <- file.path("detectedParmSpace", "PerVarFiles-RDS")
 
 
-## ** Ingest helpers
+## ** Folder -> scenario name
 
-# Summary list -> tidy rows for all three central series. Variable = file stem. Scenario filled by caller.
-Ingest_Median <- function(file) {
+# Maps each input folder to the short scenario name used downstream, e.g.
+# "IAMC-Scenario-...-policy_C0to400-lin-ClimateFeedback_On-..." -> "C0to400-lin"
+# and the "UA-v3-1-..." baseline folder -> "CP".
+Folder_Map <- read_csv(Path_FolderMap, show_col_types = FALSE)
 
-  Summary_List <- readRDS(file)
-  Variable_Key <- sub("-fit uncertainty-completeEqually-weighted\\.RDS$", "", basename(file))
-  Years        <- as.integer(Summary_List$years)
 
-  bind_rows(
-    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "means",
-           Year = Years, Value = Summary_List$means),
-    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "defaultRun",
-           Year = Years, Value = Summary_List$defaultRun),
-    tibble(Scenario = NA_character_, Variable = Variable_Key, Run = "ciBounds_q50",
-           Year = Years, Value = Summary_List$ciBounds[, "0.5"])
-  )
+## ** Sub-sample runs to ingest
 
+# run id -> sub-scenario label (percentile). Each listed run id becomes one Run,
+# selected identically from every scenario folder.
+Scenario_Input <- read_csv(Path_Scenarios, show_col_types = FALSE)
+
+cat("Sub-sample runs:", nrow(Scenario_Input), "—",
+    paste(Scenario_Input$subScenario, collapse = ", "), "\n")
+
+
+## ** FRIDA variables to load (driven by the mapping)
+
+# A per-var file is named after its FRIDA variable, normalised to snake_case
+# (lower-case, non-alphanumerics collapsed to "_"). Rebuild those stems from the
+# mapping's `FRIDA Variable` column so only variables that can reach the output
+# are read off disk. Parenthetical notes are dropped and compound "A + B"
+# sources are split, matching the calc_ inputs used in 2-Calculate.R.
+Mapping <- read_csv(Path_Mapping, show_col_types = FALSE)
+
+Normalize_FRIDA_Key <- function(x) {
+  x |>
+    str_remove_all("\\([^)]*\\)") |>       # drop "(scenario and baseline)" notes
+    str_split("\\+") |> unlist() |>         # compound "A + B" -> separate sources
+    str_to_lower() |>
+    str_replace_all("[^a-z0-9]+", "_") |>
+    str_replace_all("^_+|_+$", "")
 }
 
-# Ensemble df -> same shape as Ingest_Median. ids = NULL loads all members. Scenario filled by caller.
-Ingest_Ensemble <- function(file, ids = NULL) {
+Needed_Variables <- Normalize_FRIDA_Key(Mapping$`FRIDA Variable`)
+Needed_Variables <- unique(Needed_Variables[nzchar(Needed_Variables)])
 
-  Ensemble_DF  <- readRDS(file)
+cat("FRIDA variables needed by the mapping:", length(Needed_Variables), "\n\n")
+
+
+## ** Ingest helper
+
+# Per-var data.frame -> tidy rows for the sub-sampled ids only. The sub-scenario
+# label becomes the Run; Scenario is filled by the caller.
+Ingest_PerVar <- function(file, sub_runs) {
+
   Variable_Key <- sub("\\.RDS$", "", basename(file))
 
-  if (!is.null(ids)) Ensemble_DF <- filter(Ensemble_DF, id %in% ids)
-
-  Ensemble_DF |>
+  readRDS(file) |>
+    filter(id %in% sub_runs$id) |>
     pivot_longer(cols = -id, names_to = "Year", values_to = "Value") |>
-    mutate(
+    inner_join(sub_runs, by = "id") |>
+    transmute(
       Scenario = NA_character_,
       Variable = Variable_Key,
-      Run      = paste0("ensemble-", id),
-      Year     = as.integer(Year)
-    ) |>
-    select(Scenario, Variable, Run, Year, Value)
-
+      Run      = subScenario,
+      Year     = as.integer(Year),
+      Value
+    )
 }
 
 
 ## * Stage 1: Ingest ##########################################################
 
-# Skip folders with no RDS files at all (e.g. policy_CP while data is still incoming).
-All_Folders <- list.dirs(Path_Input, full.names = TRUE, recursive = FALSE)
+# Only mapped folders that already have the per-var directory (data may still
+# be downloading for others; unmapped folders are ignored).
+Scenario_Folders <- file.path(Path_Input, Folder_Map$folder)
+Have_Data        <- dir.exists(file.path(Scenario_Folders, PerVar_Subdir))
 
-Scenario_Folders <- All_Folders[
-  sapply(All_Folders, function(Scenario_Dir) {
-    length(list.files(Scenario_Dir, pattern = "\\.RDS$")) > 0
-  })
-]
+if (any(!Have_Data)) {
+  cat("Mapped folders without per-var data yet:",
+      paste(Folder_Map$folder[!Have_Data], collapse = ", "), "\n")
+}
 
-cat("Scenario folders with data:", length(Scenario_Folders), "\n")
+Scenario_Folders <- Scenario_Folders[Have_Data]
+
+cat("Scenario folders with per-var data:", length(Scenario_Folders), "\n")
 for (Folder in Scenario_Folders) cat(" ", basename(Folder), "\n")
 cat("\n")
 
@@ -103,35 +127,31 @@ All_Data <- tibble()
 
 for (Folder in Scenario_Folders) {
 
-  Scenario_Name <- basename(Folder)
+  # Scenario name from the folder map, e.g. "C0to400-lin", "CP".
+  Scenario_Name <- Folder_Map$scenario[Folder_Map$folder == basename(Folder)]
 
-  Median_Files <- list.files(
-    Folder,
-    pattern    = "-fit uncertainty-completeEqually-weighted\\.RDS$",
-    full.names = TRUE
-  )
+  PerVar_Dir      <- file.path(Folder, PerVar_Subdir)
+  Available_Stems <- sub("\\.RDS$", "", list.files(PerVar_Dir, pattern = "\\.RDS$"))
+  To_Load         <- intersect(Needed_Variables, Available_Stems)
+
+  Not_Yet <- setdiff(Needed_Variables, Available_Stems)
+  if (length(Not_Yet) > 0) {
+    cat("  ", Scenario_Name, "— mapping variables not yet present:",
+        paste(Not_Yet, collapse = ", "), "\n")
+  }
 
   Scenario_Data <- tibble()
-  for (File in Median_Files) {
-    Scenario_Data <- bind_rows(Scenario_Data, filter(Ingest_Median(File), Run %in% Summary_Runs))
+  for (Stem in To_Load) {
+    File <- file.path(PerVar_Dir, paste0(Stem, ".RDS"))
+    Scenario_Data <- bind_rows(Scenario_Data, Ingest_PerVar(File, Scenario_Input))
   }
 
-  Load_Ensemble <- is.null(Ensemble_IDs) || length(Ensemble_IDs) > 0
-  if (Load_Ensemble) {
-    Ensemble_Files <- list.files(Folder, pattern = "\\.RDS$", full.names = TRUE)
-    Ensemble_Files <- Ensemble_Files[
-      !grepl("-fit uncertainty-completeEqually-weighted\\.RDS$", Ensemble_Files)
-    ]
-    for (File in Ensemble_Files) {
-      Scenario_Data <- bind_rows(Scenario_Data, Ingest_Ensemble(File, Ensemble_IDs))
-    }
-  }
-
+  if (nrow(Scenario_Data) == 0) next
   Scenario_Data <- mutate(Scenario_Data, Scenario = Scenario_Name)
 
   cat(Scenario_Name, "—",
-      length(Median_Files), "variable(s):",
-      paste(unique(Scenario_Data$Variable), collapse = ", "),
+      length(To_Load), "variable(s):",
+      paste(To_Load, collapse = ", "),
       "—", nrow(Scenario_Data), "rows\n")
 
   All_Data <- bind_rows(All_Data, Scenario_Data)
@@ -139,12 +159,9 @@ for (Folder in Scenario_Folders) {
 }
 
 cat("\nAll_Data:", nrow(All_Data), "rows\n")
-cat("Year range:", min(All_Data$Year), "—", max(All_Data$Year), "\n")
-Run_Values <- unique(All_Data$Run)
-if (length(Run_Values) > 10) {
-  cat("Run values:", length(Run_Values), "distinct runs (", paste(head(Run_Values, 5), collapse = ", "), "... )\n")
-} else {
-  cat("Run values:", paste(Run_Values, collapse = ", "), "\n")
+if (nrow(All_Data) > 0) {
+  cat("Year range:", min(All_Data$Year), "—", max(All_Data$Year), "\n")
+  cat("Run values:", paste(sort(unique(All_Data$Run)), collapse = ", "), "\n")
 }
 
 ## head(All_Data)

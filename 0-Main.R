@@ -15,37 +15,30 @@
 
 ## ** Input data (1-Ingest.R)
 
-# "Data-Input" = real FRIDA output; "Data-Input/Test-Data" = placeholder data.
-Path_Input <- "Data-Input"
+# "Data-Input" = real FRIDA output (git-ignored); "Data-Config" holds the small
+# tracked config files (FolderScenarioMap.csv, ScenarioInput.csv).
+Path_Input  <- "Data-Input"
+Path_Config <- "Data-Config"
 
-# Run types to ingest. c() = all (all three summary series + all ~100,000
-# ensemble members — works, but slow).
-#   Summary series:   "means", "defaultRun", "ciBounds_q50"
-#   Ensemble members: "ensemble-1", "ensemble-50", etc.
-Selected_Runs <- c(
-  "defaultRun"
-)
+# The run ids to ingest, their sub-scenario labels (percentiles), and the Model
+# name are all listed in <Path_Config>/ScenarioInput.csv
+# (columns: id | subScenario | model). Each run id becomes one Run; the label is
+# appended to the scenario name in the output (Scenario_subScenario).
 
 ## ** Calculation (2-Calculate.R)
 
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption
-# Loss, Policy Cost|Additional Total Energy System Cost). Must match a
-# scenario folder name in Path_Input.
-Baseline_Scenario <- "policy_CP"
+# Loss, Policy Cost|Additional Total Energy System Cost). Must match a scenario
+# name in Data-Input/FolderScenarioMap.csv (the CP / current-policy baseline).
+Baseline_Scenario <- "CP"
 
 ## ** Output format (4-Format-Export.R)
 
-Model_Name  <- "FRIDA V3.1"  # confirm exact registered name for IIASA database
 Region_Name <- "World"
 
-# Runs to report. Each becomes its own Model value: "<Model_Name>_<Run>".
-# Must be a subset of what Selected_Runs ingested.
-Reported_Runs <- c(
-  "means",
-  "defaultRun",
-  "ciBounds_q50",
-  "ensemble-1"
-)
+# Runs (sub-scenarios) to report. NA/unset = every sub-scenario in
+# ScenarioInput.csv. Set to a subset of the labels (e.g. c("p50")) to restrict.
+# Reported_Runs <- c("p0", "p50", "p100")
 
 # Year range for the output file. NA = full range present in the data.
 Year_Start <- NA

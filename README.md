@@ -12,31 +12,52 @@ https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOu
 
 ## Instructions
 
-1. Create one folder for each scenario in the Data-Input folder using
-   scenario name as the folder name
-2. Place relevant Ensemble or Median RDS files in the the relevant policy
-   scenario. 
-3. Set the run parameters in 0-Main.R.
-4. Run pipeline from 0-Main.R
+1. Place each FRIDA uncertainty-analysis output folder in Data-Input. Each
+   folder holds the per-variable parameter-space files under
+   `<folder>/detectedParmSpace/PerVarFiles-RDS/<frida_variable>.RDS`.
+2. List every input folder and its short scenario name in
+   `Data-Config/FolderScenarioMap.csv`.
+3. List the run ids to report, their sub-scenario labels (percentiles), and the
+   Model name in `Data-Config/ScenarioInput.csv`.
+4. Set the remaining run parameters in 0-Main.R.
+5. Run the pipeline from 0-Main.R.
 
 ## Inputs
 
-Scenario Inputs:
-- policy_C0to400-lin
-- policy_C80-gr5
-- policy_C160-gr5
-- policy_C400-lin
-- policy_CP
+### Data-Config/FolderScenarioMap.csv
+
+Maps each input folder (the full FRIDA output folder name) to the short scenario
+name used in the output. Folders not listed here are ignored; the scenario name
+is whatever short label you choose. One of these names is the reference scenario
+set by `Baseline_Scenario` in 0-Main.R.
+
+| folder | scenario |
+|---|---|
+| \<full FRIDA output folder name> | ScenarioA |
+| \<full FRIDA output folder name> | ScenarioB |
+
+### Data-Config/ScenarioInput.csv
+
+One row per reported run. `id` is the run id to read from every per-variable
+file; `subScenario` is the label appended to each scenario name in the output
+(e.g. a percentile); `model` is the Model name to stamp.
+
+| id | subScenario | model |
+|---|---|---|
+| \<run id> | p0 | Model Name |
+| \<run id> | p50 | Model Name |
+| \<run id> | p100 | Model Name |
 
 ## Output Format
 
-The output format adheres to IAMC timeseries data format guidelines. Each
-reported run becomes its own Model value. That follows the following structure:
+The output format adheres to IAMC timeseries data format guidelines. Model comes
+from ScenarioInput.csv; the scenario name is the scenario label with the
+sub-scenario label appended (`Scenario_subScenario`):
 
 | Model | Scenario | Region | Variable | Unit | YYYY1 | YYYY2 | YYYY... |
 |---|---|---|---|---|---|---|---|
-| FRIDA VX.X_means | Policy Name | World | Variable Name | Units | xx.s | xxx.x | ... |
-| FRIDA VX.X_ensemble-X | Policy Name | World | Variable Name | Units | xx.x | xxx.x | ... |
+| Model Name | ScenarioA_p0 | World | Variable Name | Units | xx.x | xxx.x | ... |
+| Model Name | ScenarioA_p50 | World | Variable Name | Units | xx.x | xxx.x | ... |
 
 ## Process
 
@@ -46,29 +67,34 @@ reported run becomes its own Model value. That follows the following structure:
 stages in order: 
 
 - Path_Input — Data-Input for real FRIDA output, Data-Input/Test-Data for placeholders
-- Selected_Runs — runs to ingest: any of means, defaultRun, ciBounds_q50, ensemble-<id>; c() = everything
-- Baseline_Scenario — reference scenario for loss-vs-baseline variables (default policy_CP)
-- Model_Name, Region_Name — output identity columns
-- Reported_Runs — subset of ingested runs that reach the output file
+- Baseline_Scenario — reference scenario for loss-vs-baseline variables (default CP)
+- Region_Name — output Region column
+- Reported_Runs — subset of the ScenarioInput.csv sub-scenarios to report; unset = all
 - Year_Start, Year_End — output year range; NA = full range in the data
 
-The stage scripts keep the same parameters as defaults behind if
-(!exists(...)), so each can still be run standalone in a fresh R session.
+The parameter sets to read and the Model name come from
+Data-Input/ScenarioInput.csv rather than 0-Main.R. The stage scripts keep the
+same parameters as defaults behind if (!exists(...)), so each can still be run
+standalone in a fresh R session.
 
 
 ### 1. Ingest
 
-- Loads all summary RDS files from Data-Input/ and stacks into All_Data.
-- One row per FRIDA variable, run, year, and scenario. Empty scenario folders
-  are skipped.
-- Summary files contribute the three central series (means, defaultRun,
-  ciBounds_q50); ensemble files contribute one run per member id.
-- Selected_Runs filters both at ingest. Saves to Data-Output/1-All_Data.RDS.
+- For each folder in FolderScenarioMap.csv, loads the per-variable files under
+  `<folder>/detectedParmSpace/PerVarFiles-RDS/` and stacks them into All_Data.
+- Only the FRIDA variables named in Mapping/Variable-Mapping.csv are read, so
+  the large files that never reach the output are never loaded off disk. Folders
+  still downloading (no per-var directory yet, or missing variables) are skipped
+  with a note.
+- Each per-var file is a data.frame of `id` (run id) + one column per year. Only
+  the run ids in ScenarioInput.csv are kept; each id's `subScenario` label
+  becomes the Run. One row per FRIDA variable, run, year, and scenario.
+- Saves to Data-Output/1-All_Data.RDS.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
-| policy_Scenario | frida_variable | means | YYYY | xx.xxx |
-| policy_Scenario | frida_variable | ensemble-X | YYYY | xxx.xx |
+| ScenarioA | frida_variable | p0 | YYYY | xx.xxx |
+| ScenarioA | frida_variable | p50 | YYYY | xxx.xx |
 
 ### 2. Calculate
 

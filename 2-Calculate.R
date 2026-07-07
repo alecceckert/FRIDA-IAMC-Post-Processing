@@ -30,7 +30,7 @@ cat("Variables:", paste(sort(unique(All_Data$Variable)), collapse = ", "), "\n\n
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption
 # Loss, Policy Cost|Additional Total Energy System Cost). Default applies only
 # when not already set (e.g. by 0-Main.R).
-if (!exists("Baseline_Scenario")) Baseline_Scenario <- "policy_CP"
+if (!exists("Baseline_Scenario")) Baseline_Scenario <- "CP"
 
 if (!any(All_Data$Scenario == Baseline_Scenario)) {
   warning("Baseline_Scenario '", Baseline_Scenario,
