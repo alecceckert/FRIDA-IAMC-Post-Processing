@@ -18,9 +18,10 @@ https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOu
 2. List every input folder and its short scenario name in
    `Data-Config/FolderScenarioMap.csv`.
 3. List the runs to report in `Data-Config/ScenarioInput.csv`. Each row's `id`
-   is either a parameter-space run id or a statistic name
-   (`mean`/`median`/`defaultRun`/`Quantile*`), paired with a sub-scenario label
-   and the Model name. See the ScenarioInput.csv section below for all options.
+   is a parameter-space run id, a statistic name
+   (`mean`/`median`/`defaultRun`/`Quantile*`), or `csvFiles` (read from
+   `Data-Input/<scenario>.csv`), paired with a sub-scenario label and the Model
+   name. See the ScenarioInput.csv section below for all options.
 4. Set the remaining run parameters in 0-Main.R.
 5. Run the pipeline from 0-Main.R.
 
@@ -59,6 +60,11 @@ can be mixed in the same file.
   - `Quantile<q>` — any quantile column present in the plotData files, where
     `<q>` is the fraction: `Quantile0.025`, `Quantile0.165`, `Quantile0.5`,
     `Quantile0.835`, `Quantile0.975`
+- **`csvFiles`** — reads a single-run trajectory straight from the top-level
+  `Data-Input/<scenario>.csv` (a `Year` column plus one column per FRIDA
+  variable, native names with `[1]` subscripts), keyed by the scenario name
+  rather than the scenario folder. Unlike the other ids it does not look inside
+  the scenario folder at all.
 
 **`subScenario`** — the label appended to the scenario name in the output
 (`Scenario_subScenario`). Leave it **blank** to keep the scenario name unchanged
@@ -68,6 +74,7 @@ can be mixed in the same file.
 
 | id | subScenario | model |
 |---|---|---|
+| csvFiles | | Model Name |
 | defaultRun | | Model Name |
 | Quantile0.025 | STAquantile2.5 | Model Name |
 | Quantile0.5 | STAquantile50 | Model Name |
@@ -75,8 +82,9 @@ can be mixed in the same file.
 | \<run id> | STAp50 | Model Name |
 
 Statistic ids require the plotData CSVs; run ids require the per-variable RDS
-files. If a variable is missing the requested statistic column, or a source a
-row needs is not present in a folder, that piece is skipped with a note.
+files; `csvFiles` requires the top-level `Data-Input/<scenario>.csv`. If a
+variable is missing the requested statistic column, or a source a row needs is
+not present, that piece is skipped with a note.
 
 ## Output Format
 
@@ -115,7 +123,9 @@ standalone in a fresh R session.
   ScenarioInput.csv and stacks them into All_Data. Run ids come from the
   per-variable files under `<folder>/detectedParmSpace/PerVarFiles-RDS/`;
   statistic ids (mean/median/defaultRun/Quantile*) come from the fit-uncertainty
-  plotData CSVs under `<folder>/figures/CI-plots/completeEquallyWeighted/plotData/`.
+  plotData CSVs under `<folder>/figures/CI-plots/completeEquallyWeighted/plotData/`;
+  `csvFiles` reads the wide single-run table `Data-Input/<scenario>.csv` directly
+  (keyed by scenario name, not folder).
 - Only the FRIDA variables named in Mapping/Variable-Mapping.csv are read, so
   the large files that never reach the output are never loaded off disk. Folders
   still downloading (a needed source not present yet, or missing variables) are
