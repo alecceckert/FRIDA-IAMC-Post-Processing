@@ -25,6 +25,19 @@ cat("Loaded All_Data:", nrow(All_Data), "rows\n")
 cat("Variables:", paste(sort(unique(All_Data$Variable)), collapse = ", "), "\n\n")
 
 
+## ** Parameters
+
+# Reference scenario for baseline-relative variables (Policy Cost|Consumption
+# Loss, Policy Cost|Additional Total Energy System Cost). Default applies only
+# when not already set (e.g. by 0-Main.R).
+if (!exists("Baseline_Scenario")) Baseline_Scenario <- "policy_CP"
+
+if (!any(All_Data$Scenario == Baseline_Scenario)) {
+  warning("Baseline_Scenario '", Baseline_Scenario,
+          "' not found in ingested data — baseline-relative Policy Cost ",
+          "variables will be empty.")
+}
+
 ## ** Conversion constants
 
 TWh_to_EJ  <- 0.0036                     # 1 TWh = 3.6e15 J = 0.0036 EJ
@@ -218,13 +231,27 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Policy Cost|Additional Total Energy System Cost -------------------------
 
-# Total energy investments (bc$/yr 2021) -> billion USD_2010/yr.
+# Additional energy system cost vs the reference scenario (Baseline_Scenario,
+# set in 0-Main.R; default policy_CP): policy minus baseline — the OPPOSITE
+# direction of Consumption Loss. Both come out positive when the policy is
+# costly: consumption falls under policy (baseline - policy), energy system
+# cost rises under policy (policy - baseline). Joined per Run x Year; runs
+# absent from the baseline drop out; the baseline itself reports 0.
 # FRIDA outputs billions despite the "c$/Year" unit label in the v5 mapping
 # sheet (confirmed 2026-07-06) — deflation only, no magnitude scaling.
+# Caveat: total energy investments is an investment flow, used here as a
+# proxy for total energy system cost (no fuel costs or O&M).
+Baseline_Investments <- All_Data |>
+  filter(Variable == "energy_investments_total_investments",
+         Scenario == Baseline_Scenario) |>
+  select(Run, Year, Baseline_Value = Value)
+
 Calc_Data <- All_Data |>
   filter(Variable == "energy_investments_total_investments") |>
+  inner_join(Baseline_Investments, by = c("Run", "Year")) |>
   mutate(Variable = "calc_policy_cost_energy_system_busd2010",
-         Value    = Value * Defl_2021_to_2010)
+         Value    = (Value - Baseline_Value) * Defl_2021_to_2010) |>
+  select(-Baseline_Value)
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
@@ -233,13 +260,23 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Policy Cost|Consumption Loss --------------------------------------------
 
-# Real private consumption (bc$/yr 2021) -> billion USD_2010/yr.
-# Note: this is absolute consumption, not a loss relative to a reference scenario.
-# Consumption Loss in policy cost terms may require comparison to policy_CP baseline.
+# Consumption loss vs the reference scenario (Baseline_Scenario, set in
+# 0-Main.R; default policy_CP): baseline minus policy, so losses are positive
+# numbers per the protocol description. Joined per Run x Year — each run is
+# compared to the same run in the baseline; runs absent from the baseline drop
+# out. The baseline scenario itself reports 0 by definition.
+# Deflation is applied after the difference (linear, so order is immaterial).
+Baseline_Consumption <- All_Data |>
+  filter(Variable == "circular_flow_real_private_consumption_2021c",
+         Scenario == Baseline_Scenario) |>
+  select(Run, Year, Baseline_Value = Value)
+
 Calc_Data <- All_Data |>
   filter(Variable == "circular_flow_real_private_consumption_2021c") |>
+  inner_join(Baseline_Consumption, by = c("Run", "Year")) |>
   mutate(Variable = "calc_policy_cost_consumption_loss_busd2010",
-         Value    = Value * Defl_2021_to_2010)
+         Value    = (Baseline_Value - Value) * Defl_2021_to_2010) |>
+  select(-Baseline_Value)
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
