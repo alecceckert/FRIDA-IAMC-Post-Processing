@@ -28,8 +28,9 @@ Selected_Runs <- c(
 
 ## ** Calculation (2-Calculate.R)
 
-# Reference scenario for loss-vs-baseline variables (Policy Cost|Consumption
-# Loss). Must match a scenario folder name in Path_Input.
+# Reference scenario for baseline-relative variables (Policy Cost|Consumption
+# Loss, Policy Cost|Additional Total Energy System Cost). Must match a
+# scenario folder name in Path_Input.
 Baseline_Scenario <- "policy_CP"
 
 ## ** Output format (4-Format-Export.R)
