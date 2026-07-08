@@ -4,10 +4,11 @@
 #
 #   Inputs:  Data-Output/3-IAMC_Data.RDS
 #            Data-Config/ScenarioInput.csv  (subScenario -> model)
-#   Outputs: Data-Output/Data-Output.csv
+#   Outputs: Data-Output/Data-Output.csv and Data-Output/Data-Output.xlsx
 #            Columns: Model | Scenario | Region | Variable | Unit | <years>
 
 library(tidyverse)
+library(writexl)
 options(scipen = 999)
 
 
@@ -111,9 +112,14 @@ if (NA_Value_Count == 0) {
 
 ## * Stage 5: Export ##########################################################
 
-Output_File <- file.path(Path_Output, "Data-Output.csv")
-write.csv(IAMC_Wide, Output_File, na = "", row.names = FALSE)
+# Same table written two ways: CSV (blanks for missing) and XLSX.
+Output_Csv  <- file.path(Path_Output, "Data-Output.csv")
+Output_Xlsx <- file.path(Path_Output, "Data-Output.xlsx")
 
-cat("\nSaved:", Output_File, "\n")
+write.csv(IAMC_Wide, Output_Csv, na = "", row.names = FALSE)
+write_xlsx(IAMC_Wide, Output_Xlsx)
+
+cat("\nSaved:", Output_Csv, "\n")
+cat("Saved:", Output_Xlsx, "\n")
 cat("Final output:", nrow(IAMC_Wide), "rows,", ncol(IAMC_Wide), "columns\n")
 cat("Year columns:", length(Year_Column_Names), "(", min(Year_Column_Names), "-", max(Year_Column_Names), ")\n")
