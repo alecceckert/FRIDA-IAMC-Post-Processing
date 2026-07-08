@@ -1,8 +1,9 @@
 # Description:
-#   Stages 4 + 5. Appends run identity to Model name, adds Region, renames
-#   scenarios to protocol names, pivots wide, validates, and exports.
+#   Stages 4 + 5. Sets the Model name and adds Region, appends the sub-scenario
+#   (percentile) to the scenario name, pivots wide, validates, and exports.
 #
 #   Inputs:  Data-Output/3-IAMC_Data.RDS
+#            Data-Config/ScenarioInput.csv  (subScenario -> model)
 #   Outputs: Data-Output/Data-Output.csv
 #            Columns: Model | Scenario | Region | Variable | Unit | <years>
 
@@ -14,6 +15,7 @@ options(scipen = 999)
 
 ## ** Paths
 
+if (!exists("Path_Config")) Path_Config <- "Data-Config"
 Path_Output <- "Data-Output"
 IAMC_Data   <- readRDS(file.path(Path_Output, "3-IAMC_Data.RDS"))
 
@@ -23,20 +25,16 @@ cat("Loaded IAMC_Data:", nrow(IAMC_Data), "rows\n\n")
 ## ** Constants
 
 # Defaults apply only when not already set (e.g. by 0-Main.R).
-if (!exists("Model_Name"))  Model_Name  <- "FRIDA V3.1"  # confirm exact registered name for IIASA database
 if (!exists("Region_Name")) Region_Name <- "World"
 
-# Run values to include in the output. Use c(...) for multiple.
-#   Summary series: "means", "defaultRun", "ciBounds_q50"
-#   Ensemble members: "ensemble-1", "ensemble-5", etc.
+# Model name and the runs to report both come from ScenarioInput.csv: each
+# sub-scenario label (percentile) is a Run, carrying the Model name to stamp.
+Scenario_Input <- read_csv(file.path(Path_Config, "ScenarioInput.csv"),
+                           show_col_types = FALSE)
+Run_Model <- distinct(Scenario_Input, Run = subScenario, Model = model)
 
-if (!exists("Reported_Runs")) Reported_Runs <- c(
-  "means",
-  "defaultRun",
-  "ciBounds_q50",
-  "ensemble-1"
-  #"ensemble-2",
-  )
+# Run values to include in the output. Default: every sub-scenario in the file.
+if (!exists("Reported_Runs")) Reported_Runs <- Scenario_Input$subScenario
 
 # Year range for output. NA = use full range in the data.
 if (!exists("Year_Start")) Year_Start <- NA
@@ -56,11 +54,13 @@ IAMC_Wide <- IAMC_Data |>
          Year >= Horizon_Start,
          Year <= Horizon_End) |>
 
+  left_join(Run_Model, by = "Run") |>       # Model name per sub-scenario
+
   mutate(
-    Model    = paste0(Model_Name, "_", Run),   # e.g. "FRIDA V3.1_median", "FRIDA V3.1_ensemble-1"
     Region   = Region_Name,
-    # Strip "policy_" prefix: "policy_C400-lin" -> "C400-lin" etc.
-    Scenario = sub("^policy_", "", Scenario)
+    # Append the sub-scenario (percentile): "C400-lin" + "STAp50" -> "C400-lin_STAp50".
+    # A blank sub-scenario (e.g. defaultRun) leaves the scenario name unsuffixed.
+    Scenario = if_else(is.na(Run) | Run == "", Scenario, paste0(Scenario, "_", Run))
   ) |>
 
   pivot_wider(

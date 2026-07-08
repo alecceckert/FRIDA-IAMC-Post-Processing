@@ -1,0 +1,7 @@
+id,subScenario,model
+defaultRun,,FRIDAv3.1-beta1
+Quantile0.025,STAquantile2.5,FRIDAv3.1-beta1
+Quantile0.165,STAquantile16.5,FRIDAv3.1-beta1
+Quantile0.5,STAquantile50,FRIDAv3.1-beta1
+Quantile0.835,STAquantile83.5,FRIDAv3.1-beta1
+Quantile0.975,STAquantile97.5,FRIDAv3.1-beta1

@@ -30,7 +30,7 @@ cat("Variables:", paste(sort(unique(All_Data$Variable)), collapse = ", "), "\n\n
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption
 # Loss, Policy Cost|Additional Total Energy System Cost). Default applies only
 # when not already set (e.g. by 0-Main.R).
-if (!exists("Baseline_Scenario")) Baseline_Scenario <- "policy_CP"
+if (!exists("Baseline_Scenario")) Baseline_Scenario <- "CP"
 
 if (!any(All_Data$Scenario == Baseline_Scenario)) {
   warning("Baseline_Scenario '", Baseline_Scenario,
@@ -242,12 +242,12 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # Caveat: total energy investments is an investment flow, used here as a
 # proxy for total energy system cost (no fuel costs or O&M).
 Baseline_Investments <- All_Data |>
-  filter(Variable == "energy_investments_total_investments",
+  filter(Variable == "energy_investments_total_investment",
          Scenario == Baseline_Scenario) |>
   select(Run, Year, Baseline_Value = Value)
 
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_total_investments") |>
+  filter(Variable == "energy_investments_total_investment") |>
   inner_join(Baseline_Investments, by = c("Run", "Year")) |>
   mutate(Variable = "calc_policy_cost_energy_system_busd2010",
          Value    = (Value - Baseline_Value) * Defl_2021_to_2010) |>
