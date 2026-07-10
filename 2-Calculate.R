@@ -48,6 +48,38 @@ ZJ_to_EJ   <- 1000                       # 1 ZJ (zetta joule) = 1000 EJ
 # 1.36716299937247; inverted here for the deflation direction.
 Defl_2021_to_2010 <- 1/1.36716299937247  # = 0.731445
 
+## ** Primary-energy-equivalent (input-equivalent) conversion
+# Non-fossil carriers (nuclear, solar, wind, biomass) are reported on a
+# primary-energy-equivalent basis using the "input-equivalent" method: the fuel a
+# standard thermal plant would need to generate that output, i.e.
+#     primary_energy = generation / conversion_efficiency.
+# The efficiency is FRIDA's own endogenous "conversion efficiency of fossil fuels
+# to secondary fossil energy" (Fossil Energy module) — no external/assumed
+# factors — taken per Scenario x Run x Year and applied uniformly to all four
+# non-fossil carriers. Fossil coal/oil/gas are already primary energy (FRIDA
+# "Primary Fossil Energy FUEL") and are NOT converted; the aggregate Primary
+# Energy total is the sum of the carriers (see that section).
+Fossil_Conversion_Efficiency <- All_Data |>
+  filter(Variable ==
+    "fossil_energy_conversion_efficiency_of_fossil_fuels_to_secondary_fossil_energy") |>
+  select(Scenario, Run, Year, Efficiency = Value)
+
+if (nrow(Fossil_Conversion_Efficiency) == 0)
+  warning("FRIDA fossil-fuel conversion efficiency not found in All_Data — ",
+          "input-equivalent Primary Energy carriers will be empty.")
+
+# generation (TWh) -> primary-energy-equivalent EJ, dividing by the FRIDA
+# conversion efficiency joined on Scenario x Run x Year.
+primary_energy_equivalent <- function(source_variable, target_variable) {
+  All_Data |>
+    filter(Variable == source_variable) |>
+    inner_join(Fossil_Conversion_Efficiency,
+               by = c("Scenario", "Run", "Year")) |>
+    mutate(Variable = target_variable,
+           Value    = Value * TWh_to_EJ / Efficiency) |>
+    select(-Efficiency)
+}
+
 
 ## * Stage 2: Calculate #######################################################
 
@@ -98,27 +130,18 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## filter(All_Data, Variable == "calc_final_energy_ej", Year == 2020)
 
 
-## ** Primary Energy ----------------------------------------------------------
-
-# Same source as Final Energy — FRIDA Total Energy Output is used as proxy for both.
-Calc_Data <- All_Data |>
-  filter(Variable == "energy_supply_total_energy_output") |>
-  mutate(Variable = "calc_primary_energy_ej",
-         Value    = Value * TWh_to_EJ)
-
-All_Data <- bind_rows(All_Data, Calc_Data)
-
-## filter(All_Data, Variable == "calc_primary_energy_ej", Year == 2020)
+# Note: the Primary Energy total is the sum of the carriers below, not a
+# standalone FRIDA output — see the "Primary Energy (total)" section after Wind.
 
 
 ## ** Primary Energy|Biomass --------------------------------------------------
 
-# Bio fuel secondary energy output (TWh/yr) -> EJ/yr.
-# Per v5 mapping, secondary output used as primary energy proxy for biomass.
-Calc_Data <- All_Data |>
-  filter(Variable == "bio_fuel_energy_bio_fuel_secondary_energy_output") |>
-  mutate(Variable = "calc_primary_energy_biomass_ej",
-         Value    = Value * TWh_to_EJ)
+# Bio fuel secondary energy output (TWh/yr) -> primary-energy-equivalent EJ/yr,
+# dividing by FRIDA's fossil-fuel conversion efficiency (same basis as the other
+# non-fossil carriers).
+Calc_Data <- primary_energy_equivalent(
+  "bio_fuel_energy_bio_fuel_secondary_energy_output",
+  "calc_primary_energy_biomass_ej")
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
@@ -165,12 +188,11 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Nuclear --------------------------------------------------
 
-# Nuclear energy output (TWh/yr). IAMC convention here: secondary electricity
-# output reported directly (no thermal efficiency uplift applied).
-Calc_Data <- All_Data |>
-  filter(Variable == "nuclear_energy_nuclear_energy_output") |>
-  mutate(Variable = "calc_primary_energy_nuclear_ej",
-         Value    = Value * TWh_to_EJ)
+# Nuclear energy output (TWh/yr) -> primary-energy-equivalent EJ/yr
+# (input-equivalent method, FRIDA conversion efficiency).
+Calc_Data <- primary_energy_equivalent(
+  "nuclear_energy_nuclear_energy_output",
+  "calc_primary_energy_nuclear_ej")
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
@@ -179,10 +201,11 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Solar ----------------------------------------------------
 
-Calc_Data <- All_Data |>
-  filter(Variable == "solar_energy_solar_energy_output") |>
-  mutate(Variable = "calc_primary_energy_solar_ej",
-         Value    = Value * TWh_to_EJ)
+# Solar energy output (TWh/yr) -> primary-energy-equivalent EJ/yr
+# (input-equivalent method, FRIDA conversion efficiency).
+Calc_Data <- primary_energy_equivalent(
+  "solar_energy_solar_energy_output",
+  "calc_primary_energy_solar_ej")
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
@@ -191,14 +214,41 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Wind -----------------------------------------------------
 
-Calc_Data <- All_Data |>
-  filter(Variable == "wind_energy_wind_energy_output") |>
-  mutate(Variable = "calc_primary_energy_wind_ej",
-         Value    = Value * TWh_to_EJ)
+# Wind energy output (TWh/yr) -> primary-energy-equivalent EJ/yr
+# (input-equivalent method, FRIDA conversion efficiency).
+Calc_Data <- primary_energy_equivalent(
+  "wind_energy_wind_energy_output",
+  "calc_primary_energy_wind_ej")
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## filter(All_Data, Variable == "calc_primary_energy_wind_ej", Year == 2020)
+
+
+## ** Primary Energy (total) --------------------------------------------------
+
+# Sum of the individual carriers computed above (fossil coal/oil/gas already on
+# a primary basis; biomass/nuclear/solar/wind on the input-equivalent basis).
+# Built from the components rather than any single FRIDA output. Summed per
+# Scenario x Run x Year; na.rm keeps a partial total when a carrier is absent.
+Primary_Energy_Carriers <- c(
+  "calc_primary_energy_coal_ej",
+  "calc_primary_energy_oil_ej",
+  "calc_primary_energy_gas_ej",
+  "calc_primary_energy_biomass_ej",
+  "calc_primary_energy_nuclear_ej",
+  "calc_primary_energy_solar_ej",
+  "calc_primary_energy_wind_ej"
+)
+Calc_Data <- All_Data |>
+  filter(Variable %in% Primary_Energy_Carriers) |>
+  group_by(Scenario, Run, Year) |>
+  summarise(Value = sum(Value, na.rm = TRUE), .groups = "drop") |>
+  mutate(Variable = "calc_primary_energy_ej")
+
+All_Data <- bind_rows(All_Data, Calc_Data)
+
+## filter(All_Data, Variable == "calc_primary_energy_ej", Year == 2020)
 
 
 ## ** GDP|PPP -----------------------------------------------------------------
