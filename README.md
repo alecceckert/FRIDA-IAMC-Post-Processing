@@ -106,7 +106,7 @@ when the sub-scenario label is blank:
 stages in order: 
 
 - Path_Input — Data-Input for real FRIDA output, Data-Input/Test-Data for placeholders
-- Baseline_Scenario — reference scenario for loss-vs-baseline variables (default CP)
+- Baseline_Scenario — reference scenario for loss-vs-baseline variables (default Current-Policies)
 - Region_Name — output Region column
 - Reported_Runs — subset of the ScenarioInput.csv sub-scenarios to report; unset = all
 - Year_Start, Year_End — output year range; NA = full range in the data

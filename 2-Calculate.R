@@ -30,7 +30,7 @@ cat("Variables:", paste(sort(unique(All_Data$Variable)), collapse = ", "), "\n\n
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption
 # Loss, Policy Cost|Additional Total Energy System Cost). Default applies only
 # when not already set (e.g. by 0-Main.R).
-if (!exists("Baseline_Scenario")) Baseline_Scenario <- "CP"
+if (!exists("Baseline_Scenario")) Baseline_Scenario <- "Current-Policies"
 
 if (!any(All_Data$Scenario == Baseline_Scenario)) {
   warning("Baseline_Scenario '", Baseline_Scenario,
@@ -270,7 +270,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # Carbon price as scenario input (GRAPH(TIME) path). FRIDA unit: c2021$/tCO2e.
 # Deflated to USD_2010/tCO2. No quantity aggregation — direct unit conversion.
 Calc_Data <- All_Data |>
-  filter(Variable == "government_regulations_tax_on_co2e_emissions") |>
+  filter(Variable == "government_regulations_actual_tax_on_co2e_emissions") |>
   mutate(Variable = "calc_price_carbon_usd2010",
          Value    = Value * Defl_2021_to_2010)
 
@@ -282,7 +282,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Policy Cost|Additional Total Energy System Cost -------------------------
 
 # Additional energy system cost vs the reference scenario (Baseline_Scenario,
-# set in 0-Main.R; default policy_CP): policy minus baseline — the OPPOSITE
+# set in 0-Main.R; default): policy minus baseline — the OPPOSITE
 # direction of Consumption Loss. Both come out positive when the policy is
 # costly: consumption falls under policy (baseline - policy), energy system
 # cost rises under policy (policy - baseline). Joined per Run x Year; runs
@@ -311,7 +311,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Policy Cost|Consumption Loss --------------------------------------------
 
 # Consumption loss vs the reference scenario (Baseline_Scenario, set in
-# 0-Main.R; default policy_CP): baseline minus policy, so losses are positive
+# 0-Main.R; default): baseline minus policy, so losses are positive
 # numbers per the protocol description. Joined per Run x Year — each run is
 # compared to the same run in the baseline; runs absent from the baseline drop
 # out. The baseline scenario itself reports 0 by definition.

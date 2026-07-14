@@ -62,7 +62,7 @@ PlotData_Suffix <- "-fit uncertainty-completeEqually-weighted.csv"
 
 # Maps each input folder to the short scenario name used downstream, e.g.
 # "IAMC-Scenario-...-policy_C0to400-lin-ClimateFeedback_On-..." -> "C0to400-lin"
-# and the "UA-v3-1-..." baseline folder -> "CP".
+# and the "UA-v3-1-..." baseline folder -> "Current-Policies".
 Folder_Map <- read_csv(Path_FolderMap, show_col_types = FALSE)
 
 
@@ -237,7 +237,7 @@ if (Need_Runs || Need_Stats) {
 
   for (Folder in Scenario_Folders) {
 
-    # Scenario name from the folder map, e.g. "C0to400-lin", "CP".
+    # Scenario name from the folder map, e.g. "C0to400-lin", "Current-Policies".
     Scenario_Name <- Folder_Map$scenario[Folder_Map$folder == basename(Folder)]
 
     PerVar_Dir   <- file.path(Folder, PerVar_Subdir)

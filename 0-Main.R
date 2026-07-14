@@ -29,8 +29,8 @@ Path_Config <- "Data-Config"
 
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption
 # Loss, Policy Cost|Additional Total Energy System Cost). Must match a scenario
-# name in Data-Input/FolderScenarioMap.csv (the CP / current-policy baseline).
-Baseline_Scenario <- "CP"
+# name in Data-Input/FolderScenarioMap.csv (the Current-Policies / current-policy baseline).
+Baseline_Scenario <- "Current-Policies"
 
 ## ** Output format (4-Format-Export.R)
 
