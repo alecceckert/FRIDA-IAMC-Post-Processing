@@ -2,9 +2,10 @@
 #   Stages 4 + 5. Sets the Model name and adds Region, appends the sub-scenario
 #   (percentile) to the scenario name, pivots wide, validates, and exports.
 #
-#   Inputs:  Data-Output/3-IAMC_Data.RDS
+#   Inputs:  Data-Output/3-IAMC_Data-<set>.RDS
 #            Data-Config/ScenarioInput.csv  (subScenario -> model)
-#   Outputs: Data-Output/Data-Output.csv and Data-Output/Data-Output.xlsx
+#            (<set> via File_Suffix from Variable_Set in 0-Main.R)
+#   Outputs: Data-Output/Data-Output-<set>.csv and Data-Output/Data-Output-<set>.xlsx
 #            Columns: Model | Scenario | Region | Variable | Unit | <years>
 
 library(tidyverse)
@@ -17,8 +18,9 @@ options(scipen = 999)
 ## ** Paths
 
 if (!exists("Path_Config")) Path_Config <- "Data-Config"
+if (!exists("File_Suffix")) File_Suffix <- "-Diagnostic"
 Path_Output <- "Data-Output"
-IAMC_Data   <- readRDS(file.path(Path_Output, "3-IAMC_Data.RDS"))
+IAMC_Data   <- readRDS(file.path(Path_Output, paste0("3-IAMC_Data", File_Suffix, ".RDS")))
 
 cat("Loaded IAMC_Data:", nrow(IAMC_Data), "rows\n\n")
 
@@ -113,8 +115,8 @@ if (NA_Value_Count == 0) {
 ## * Stage 5: Export ##########################################################
 
 # Same table written two ways: CSV (blanks for missing) and XLSX.
-Output_Csv  <- file.path(Path_Output, "Data-Output.csv")
-Output_Xlsx <- file.path(Path_Output, "Data-Output.xlsx")
+Output_Csv  <- file.path(Path_Output, paste0("Data-Output", File_Suffix, ".csv"))
+Output_Xlsx <- file.path(Path_Output, paste0("Data-Output", File_Suffix, ".xlsx"))
 
 write.csv(IAMC_Wide, Output_Csv, na = "", row.names = FALSE)
 write_xlsx(IAMC_Wide, Output_Xlsx)

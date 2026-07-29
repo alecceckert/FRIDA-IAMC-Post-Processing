@@ -27,8 +27,9 @@
 #            Data-Input/<scenario>.csv          (csvFiles: wide single-run table)
 #            Data-Config/FolderScenarioMap.csv (folder -> scenario name)
 #            Data-Config/ScenarioInput.csv     (id | subScenario | model)
-#            Mapping/Variable-Mapping.csv       (FRIDA Variable column)
-#   Outputs: Data-Output/1-All_Data.RDS
+#            Mapping/Variable-Mapping-<set>.csv (FRIDA Variable column;
+#            set by Path_Mapping from Variable_Set in 0-Main.R)
+#   Outputs: Data-Output/1-All_Data-<set>.RDS
 #            Columns: Scenario | Variable | Run | Year | Value
 
 library(tidyverse)
@@ -40,10 +41,11 @@ options(scipen = 999)
 ## ** Paths
 
 # Defaults apply only when not already set (e.g. by 0-Main.R).
-if (!exists("Path_Input"))  Path_Input  <- "Data-Input"
-if (!exists("Path_Config")) Path_Config <- "Data-Config"
+if (!exists("Path_Input"))   Path_Input   <- "Data-Input"
+if (!exists("Path_Config"))  Path_Config  <- "Data-Config"
+if (!exists("Path_Mapping")) Path_Mapping <- file.path("Mapping", "Variable-Mapping-Diagnostic.csv")
+if (!exists("File_Suffix"))  File_Suffix  <- "-Diagnostic"
 Path_Output    <- "Data-Output"
-Path_Mapping   <- file.path("Mapping", "Variable-Mapping.csv")
 Path_Scenarios <- file.path(Path_Config, "ScenarioInput.csv")
 Path_FolderMap <- file.path(Path_Config, "FolderScenarioMap.csv")
 
@@ -104,14 +106,17 @@ if (Need_Csv)
 # A per-var file is named after its FRIDA variable, normalised to snake_case
 # (lower-case, non-alphanumerics collapsed to "_"). Rebuild those stems from the
 # mapping's `FRIDA Variable` column so only variables that can reach the output
-# are read off disk. Parenthetical notes are dropped and compound "A + B"
-# sources are split, matching the calc_ inputs used in 2-Calculate.R.
+# are read off disk. Parenthetical notes and [1]/[*] element subscripts are
+# dropped; compound "A + B" (sums) and "A over B" (ratios, e.g. the Compass
+# food-per-capita rows) sources are split, matching the calc_ inputs used in
+# the 2-Calculate-<set>.R scripts.
 Mapping <- read_csv(Path_Mapping, show_col_types = FALSE)
 
 Normalize_FRIDA_Key <- function(x) {
   x |>
     str_remove_all("\\([^)]*\\)") |>       # drop "(scenario and baseline)" notes
-    str_split("\\+") |> unlist() |>         # compound "A + B" -> separate sources
+    str_remove_all("\\[[^]]*\\]") |>       # drop [1]/[*] element subscripts
+    str_split("\\+|\\s+over\\s+") |> unlist() |>  # "A + B" / "A over B" -> separate sources
     str_to_lower() |>
     str_replace_all("[^a-z0-9]+", "_") |>
     str_replace_all("^_+|_+$", "")
@@ -331,5 +336,5 @@ if (nrow(All_Data) > 0) {
 
 ## * Export Intermediate ######################################################
 
-saveRDS(All_Data, file.path(Path_Output, "1-All_Data.RDS"))
-cat("\nSaved: Data-Output/1-All_Data.RDS\n")
+saveRDS(All_Data, file.path(Path_Output, paste0("1-All_Data", File_Suffix, ".RDS")))
+cat("\nSaved: Data-Output/1-All_Data", File_Suffix, ".RDS\n", sep = "")

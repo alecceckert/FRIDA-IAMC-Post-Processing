@@ -13,6 +13,17 @@
 
 ## * Parameters ###############################################################
 
+## ** Variable set
+
+# Which submission's variable set to process. Selects the mapping CSV and the
+# calculate script; stages 1/3/4 are generic and read Path_Mapping/File_Suffix.
+#   "Diagnostic" = IAM community diagnostic assessment protocol (core variables)
+#   "Compass"    = Scenario Compass variable set
+Variable_Set <- "Compass"
+
+Path_Mapping <- file.path("Mapping", paste0("Variable-Mapping-", Variable_Set, ".csv"))
+File_Suffix  <- paste0("-", Variable_Set)   # e.g. Data-Output/1-All_Data-Diagnostic.RDS
+
 ## ** Input data (1-Ingest.R)
 
 # "Data-Input" = real FRIDA output (git-ignored); "Data-Config" holds the small
@@ -48,6 +59,6 @@ Year_End   <- NA
 ## * Run Pipeline #############################################################
 
 source("1-Ingest.R")
-source("2-Calculate.R")
+source(paste0("2-Calculate-", Variable_Set, ".R"))
 source("3-Map.R")
 source("4-Format-Export.R")

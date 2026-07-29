@@ -7,8 +7,13 @@
 #     ccs_captured_co2_to_store       -> Carbon Capture
 #     emissions_total_co2_emissions   -> Emissions|CO2
 #
-#   Inputs:  Data-Output/1-All_Data.RDS
-#   Outputs: Data-Output/2-All_Data_Calc.RDS
+#   This script implements the Diagnostic (core protocol) variable set; the
+#   Scenario Compass set lives in 2-Calculate-Compass.R. 0-Main.R sources one
+#   of the two via Variable_Set.
+#
+#   Inputs:  2-Constants.R (shared conversion constants)
+#            Data-Output/1-All_Data-Diagnostic.RDS
+#   Outputs: Data-Output/2-All_Data_Calc-Diagnostic.RDS
 
 library(tidyverse)
 options(scipen = 999)
@@ -18,8 +23,10 @@ options(scipen = 999)
 
 ## ** Paths
 
+# Default applies only when not already set (e.g. by 0-Main.R).
+if (!exists("File_Suffix")) File_Suffix <- "-Diagnostic"
 Path_Output <- "Data-Output"
-All_Data    <- readRDS(file.path(Path_Output, "1-All_Data.RDS"))
+All_Data    <- readRDS(file.path(Path_Output, paste0("1-All_Data", File_Suffix, ".RDS")))
 
 cat("Loaded All_Data:", nrow(All_Data), "rows\n")
 cat("Variables:", paste(sort(unique(All_Data$Variable)), collapse = ", "), "\n\n")
@@ -40,13 +47,9 @@ if (!any(All_Data$Scenario == Baseline_Scenario)) {
 
 ## ** Conversion constants
 
-TWh_to_EJ  <- 0.0036                     # 1 TWh = 3.6e15 J = 0.0036 EJ
-t_to_Mt    <- 1e-6                       # 1 t = 1e-6 Mt (1 Mt = 1,000,000 t)
-ZJ_to_EJ   <- 1000                       # 1 ZJ (zetta joule) = 1000 EJ
-# Constant 2021 USD -> constant 2010 USD. The manual mapping doc
-# (FRIDA_IAMC_VariableMapping_v5.xlsx) gives the 2010->2021 inflation factor
-# 1.36716299937247; inverted here for the deflation direction.
-Defl_2021_to_2010 <- 1/1.36716299937247  # = 0.731445
+# Shared with 2-Calculate-Compass.R (TWh_to_EJ, ZJ_to_EJ, t_to_Mt, USD_to_bUSD,
+# Defl_2021_to_2010). No Diagnostic-specific constants at present.
+source("2-Constants.R")
 
 ## ** Primary-energy-equivalent (input-equivalent) conversion
 # Non-fossil carriers (nuclear, solar, wind, biomass) are reported on a
@@ -345,5 +348,5 @@ for (V in sort(unique(All_Data$Variable[grepl("^calc_", All_Data$Variable)]))) c
 
 ## * Export Intermediate ######################################################
 
-saveRDS(All_Data, file.path(Path_Output, "2-All_Data_Calc.RDS"))
-cat("\nSaved: Data-Output/2-All_Data_Calc.RDS\n")
+saveRDS(All_Data, file.path(Path_Output, paste0("2-All_Data_Calc", File_Suffix, ".RDS")))
+cat("\nSaved: Data-Output/2-All_Data_Calc", File_Suffix, ".RDS\n", sep = "")
