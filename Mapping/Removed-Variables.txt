@@ -1,0 +1,19 @@
+# Variables removed from the calculations (Variable-Mapping-Compass.csv), 2026-07-29
+# Context: the Additional (pre-Compass) block of FRIDA_to_IAMC.xlsx was moved out of
+# FRIDA_Compass_VariableMapping_v1.xlsx to FRIDA_Additional_Variables_v1.xlsx; these
+# 11 rows (implemented 2026-07-29 as direct pass-throughs) were removed from the
+# pipeline the same day. Re-adding any of them = one row in Variable-Mapping-Compass.csv
+# (no calculate-script section needed; all are pass-throughs).
+#
+# IAMC Variable            | FRIDA Variable                                     | Unit kept (manual)
+Temperature Anomaly        | Energy Balance Model.Surface Temperature Anomaly   | K
+Capacity|Biomass           | bio fuel energy.bio fuel production Capacity       | Mt/Year
+Production|Biomass         | bio fuel energy.bio fuel production                | Mt/Year
+Capacity|Coal              | fossil energy coal.Fossil Energy and Fuel Capital  | c$
+Capacity|Gas               | fossil energy gas.Fossil Energy and Fuel Capital   | c$
+Capacity|Oil               | fossil energy oil.Fossil Energy and Fuel Capital   | c$
+Secondary Energy           | energy supply.Total Energy Output                  | TWh/Year
+Secondary Energy|Coal      | fossil energy coal.Secondary Fossil Energy Output  | TWh/Year
+Secondary Energy|Gas       | fossil energy gas.Secondary Fossil Energy Output   | TWh/Year
+Secondary Energy|Oil       | fossil energy oil.Secondary Fossil Energy Output   | TWh/Year
+Secondary Energy|Biomass   | bio fuel energy.bio fuel secondary energy output   | TWh/Year
