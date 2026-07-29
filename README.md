@@ -1,6 +1,19 @@
 # FRIDA IAMC Post Processing
 
-R code to process output files from FRIDA model to refactor and format in IAMC format for submission to the IAM community diagnostic assessment protocol in 2026.
+R code to process output files from FRIDA model to refactor and format in IAMC
+format. One pipeline serves two submissions, selected by `Variable_Set` in
+0-Main.R:
+
+- **Diagnostic** — the IAM community diagnostic assessment protocol (core
+  variables), deadline 1 Sep 2026.
+- **Compass** — the Scenario Compass variable set (74 variables), deadline
+  29 Sep 2026. Merged 2026-07-28 from the now-superseded
+  FRIDA-Scenario-Compass-Post-Processing repository.
+
+Each set has its own mapping CSV (`Mapping/Variable-Mapping-<set>.csv`) and
+calculate script (`2-Calculate-<set>.R`, sharing `2-Constants.R`); stages
+1/3/4 are generic. Intermediates and outputs are suffixed with the set name,
+so both sets can be ingested side by side.
 
 ## Resources
 
@@ -22,8 +35,10 @@ https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOu
    (`mean`/`median`/`defaultRun`/`Quantile*`), or `csvFiles` (read from
    `Data-Input/<scenario>.csv`), paired with a sub-scenario label and the Model
    name. See the ScenarioInput.csv section below for all options.
-4. Set the remaining run parameters in 0-Main.R.
-5. Run the pipeline from 0-Main.R.
+4. Choose the variable set (`Variable_Set <- "Diagnostic"` or `"Compass"`) and
+   set the remaining run parameters in 0-Main.R.
+5. Run the pipeline from 0-Main.R. Rerun with the other `Variable_Set` for the
+   other submission — outputs do not overwrite each other.
 
 ## Inputs
 
@@ -105,16 +120,19 @@ when the sub-scenario label is blank:
 0-Main.R holds every parameter that changes between runs and sources the four
 stages in order: 
 
-- Path_Input — Data-Input for real FRIDA output, Data-Input/Test-Data for placeholders
+- Variable_Set — "Diagnostic" or "Compass"; selects the mapping CSV
+  (Path_Mapping), the calculate script, and the file suffix (File_Suffix) used
+  on all intermediates and outputs
+- Path_Input — Data-Input holds the FRIDA output folders
 - Baseline_Scenario — reference scenario for loss-vs-baseline variables (default Current-Policies)
 - Region_Name — output Region column
 - Reported_Runs — subset of the ScenarioInput.csv sub-scenarios to report; unset = all
 - Year_Start, Year_End — output year range; NA = full range in the data
 
 The parameter sets to read and the Model name come from
-Data-Input/ScenarioInput.csv rather than 0-Main.R. The stage scripts keep the
+Data-Config/ScenarioInput.csv rather than 0-Main.R. The stage scripts keep the
 same parameters as defaults behind if (!exists(...)), so each can still be run
-standalone in a fresh R session.
+standalone in a fresh R session (defaulting to the Diagnostic set).
 
 
 ### 1. Ingest
@@ -126,13 +144,13 @@ standalone in a fresh R session.
   plotData CSVs under `<folder>/figures/CI-plots/completeEquallyWeighted/plotData/`;
   `csvFiles` reads the wide single-run table `Data-Input/<scenario>.csv` directly
   (keyed by scenario name, not folder).
-- Only the FRIDA variables named in Mapping/Variable-Mapping.csv are read, so
-  the large files that never reach the output are never loaded off disk. Folders
-  still downloading (a needed source not present yet, or missing variables) are
-  skipped with a note.
+- Only the FRIDA variables named in the selected
+  Mapping/Variable-Mapping-\<set>.csv are read, so the large files that never
+  reach the output are never loaded off disk. Folders still downloading (a
+  needed source not present yet, or missing variables) are skipped with a note.
 - Each id's `subScenario` label becomes the Run (a blank label leaves the
   scenario name unsuffixed). One row per FRIDA variable, run, year, and scenario.
-- Saves to Data-Output/1-All_Data.RDS.
+- Saves to Data-Output/1-All_Data-\<set>.RDS.
 
 | Scenario | Variable | Run | Year | Value |
 |---|---|---|---|---|
@@ -141,18 +159,25 @@ standalone in a fresh R session.
 
 ### 2. Calculate
 
+- One script per variable set: 2-Calculate-Diagnostic.R or
+  2-Calculate-Compass.R (0-Main.R sources the one matching Variable_Set).
+  Conversion constants shared by both live in 2-Constants.R; set-specific
+  constants stay in the owning script's Preamble.
 - Derives composite IAMC variables and applies unit conversions.
-- Each IAMC variable that requires processing has its own section. Calculations.
+- Each IAMC variable that requires processing has its own section. Calculations
   are appended to All_Data under calc_ names.
+- Saves to Data-Output/2-All_Data_Calc-\<set>.RDS.
 
 ### 3. Map
 
-- Joins All_Data with Mapping/Variable-Mapping.csv to replace FRIDA variable
-  keys with IAMC variable names and units.
-- Add a row to Variable-Mapping.csv for each new variable.
+- Joins All_Data with the selected Mapping/Variable-Mapping-\<set>.csv to
+  replace FRIDA variable keys with IAMC variable names and units.
+- Add a row to the set's mapping CSV for each new variable.
 - Unmapped variables are dropped. The last three columns document the FRIDA
-  source, its units, and the transformation applied.
-- Saves to Data-Output/3-IAMC_Data.RDS.
+  source, its units, and the transformation applied. One FRIDA/calc key may
+  feed several IAMC variables (e.g. Compass Consumption also maps to
+  Expenditure|Households).
+- Saves to Data-Output/3-IAMC_Data-\<set>.RDS.
 
 | IAMC Variable | IAMC Unit | IAMC Description | Variable | FRIDA Variable | FRIDA Unit | Transformation |
 |---|---|---|---|---|---|---|
@@ -161,7 +186,8 @@ standalone in a fresh R session.
 ## 4. Format and Export
 
 - Filters to Reported_Runs and the Year_Start–Year_End horizon.
-- Appends the run name to the Model name, adds the Region and Scenario, pivots
-  to the wide IAMC layout.  
-- Writes Data-Output/Data-Output.csv
+- Stamps the Model name from ScenarioInput.csv, adds the Region, appends the
+  sub-scenario label to the Scenario name, pivots to the wide IAMC layout.
+- Writes Data-Output/Data-Output-\<set>.csv and .xlsx (requires the writexl
+  package).
 
