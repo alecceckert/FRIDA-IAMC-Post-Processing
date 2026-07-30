@@ -289,27 +289,6 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## filter(All_Data, Variable == "calc_gdp_pc_growth_pct", Year == 2020)
 
 
-## ** Food Waste [per capita] --------------------------------------------------
-
-# Food waste as the gap between what the food system supplies and what people
-# eat: availability minus intake, both kcal/cap/day (the mapping sheet defines
-# it as the difference between food availability and intake). Consumes the
-# availability series computed above; intake is FRIDA's per-capita demand.
-Calc_Data <- All_Data |>
-  filter(Variable == "calc_food_availability_kcal_cap_day") |>
-  inner_join(All_Data |>
-      filter(Variable == "total_food_demand_average_daily_demand_per_capita") |>
-      select(Scenario, Run, Year, Intake = Value),
-    by = c("Scenario", "Run", "Year")) |>
-  mutate(Variable = "calc_food_waste_kcal_cap_day",
-         Value    = Value - Intake) |>
-  select(-Intake)
-
-All_Data <- bind_rows(All_Data, Calc_Data)
-
-## filter(All_Data, Variable == "calc_food_waste_kcal_cap_day", Year == 2020)
-
-
 ## ** Land Cover (total) --------------------------------------------------------
 
 # Scenario Compass. Constant total land area (no FRIDA variable). The
@@ -375,8 +354,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Hydro -----------------------------------------------------
 
-# Scenario Compass. Also mapped to Secondary Energy|Electricity|Hydro (there
-# without the efficiency division — secondary energy stays at generation).
+# Scenario Compass. Input-equivalent primary energy: generation / efficiency.
 Calc_Data <- All_Data |>
   filter(Variable == "hydropower_energy_hydropower_energy_output") |>
   inner_join(Fossil_Conversion_Efficiency, by = c("Scenario", "Run", "Year")) |>
@@ -387,33 +365,52 @@ Calc_Data <- All_Data |>
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 
+## ** Secondary Energy|Electricity|Hydro ---------------------------------------
+
+# Secondary energy stays at generation — no efficiency division, matching the
+# solar/wind/nuclear treatment above. This previously shared the primary-energy
+# key, which reported hydro generation inflated by 1/efficiency (~2.4x).
+Calc_Data <- All_Data |>
+  filter(Variable == "hydropower_energy_hydropower_energy_output") |>
+  mutate(Variable = "calc_secondary_electricity_hydro_ej",
+         Value    = Value * TWh_to_EJ)
+
+All_Data <- bind_rows(All_Data, Calc_Data)
+
+
 ## ** Primary Energy|Fossil ----------------------------------------------------
 
-# Scenario Compass. Secondary fossil energy output, TWh/yr -> EJ/yr.
-# The mapping sheet says ZJ/yr, but FRIDA.stmx declares TWh/Year (verified
-# 2026-07-07) - using TWh_to_EJ, not ZJ_to_EJ.
+# Scenario Compass. Sum of the three primary fossil fuel inputs (coal + oil +
+# gas), ZJ/yr -> EJ/yr — the same series as Resource|Extraction|*, so primary
+# fossil energy and extraction stay mutually consistent. This was previously
+# taken from Secondary Fossil Energy Output, which is post-conversion and so
+# understated primary fossil energy by 1/efficiency (~2.5x, 197 vs 487 EJ in
+# 2020); that mismatch also let the w/ CCS series exceed this total.
 Calc_Data <- All_Data |>
-  filter(Variable == "fossil_energy_secondary_fossil_energy_output") |>
+  filter(Variable %in% c("fossil_energy_coal_primary_fossil_energy_fuel",
+                         "fossil_energy_oil_primary_fossil_energy_fuel",
+                         "fossil_energy_gas_primary_fossil_energy_fuel")) |>
+  group_by(Scenario, Run, Year) |>
+  summarise(Value = sum(Value, na.rm = TRUE), .groups = "drop") |>
   mutate(Variable = "calc_primary_energy_fossil_ej",
-         Value    = Value * TWh_to_EJ)
+         Value    = Value * ZJ_to_EJ)
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 
 ## ** Primary Energy|Coal|w/ CCS ----------------------------------------------
 
-# FRIDA has no plant-level split of energy produced with vs without CCS, so
-# the emissions-capture share stands in for it: effective share per fuel =
-# share of emissions capturable (fuel module) x share of capturable emissions
-# captured (CCS module), joined per Scenario x Run x Year. Capture — not
-# storage — shares, matching the IAMC w/ CCS definition.
+# FRIDA has no plant-level split of energy produced with vs without CCS, so the
+# endogenous storage-allocation share stands in for it: the fraction of the
+# fuel's emissions routed to storage rather than to the carbon tax, which is
+# FRIDA's per-fuel CCS adoption decision and so responds to carbon price and
+# scenario. This replaces the flue-gas constants (capturable x captured); those
+# describe how completely an already-equipped plant scrubs, not how much energy
+# is equipped, and being constants they implied a fixed ~73% of coal energy was
+# CCS-equipped in every year and scenario.
 CCS_Share_Coal <- All_Data |>
-  filter(Variable == "fossil_energy_coal_share_of_coal_emissions_capturable") |>
-  inner_join(All_Data |>
-      filter(Variable == "ccs_share_of_capturable_coal_emissions_captured") |>
-      select(Scenario, Run, Year, Captured = Value),
-    by = c("Scenario", "Run", "Year")) |>
-  transmute(Scenario, Run, Year, Share = Value * Captured)
+  filter(Variable == "fossil_energy_coal_endogenous_share_of_emissions_stored") |>
+  select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
   filter(Variable == "fossil_energy_coal_primary_fossil_energy_fuel") |>
@@ -430,12 +427,8 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Primary Energy|Gas|w/ CCS -----------------------------------------------
 
 CCS_Share_Gas <- All_Data |>
-  filter(Variable == "fossil_energy_gas_share_of_gas_emissions_capturable") |>
-  inner_join(All_Data |>
-      filter(Variable == "ccs_share_of_capturable_gas_emissions_captured") |>
-      select(Scenario, Run, Year, Captured = Value),
-    by = c("Scenario", "Run", "Year")) |>
-  transmute(Scenario, Run, Year, Share = Value * Captured)
+  filter(Variable == "fossil_energy_gas_endogenous_share_of_emissions_stored") |>
+  select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
   filter(Variable == "fossil_energy_gas_primary_fossil_energy_fuel") |>
@@ -450,12 +443,8 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Primary Energy|Oil|w/ CCS -----------------------------------------------
 
 CCS_Share_Oil <- All_Data |>
-  filter(Variable == "fossil_energy_oil_share_of_oil_emissions_capturable") |>
-  inner_join(All_Data |>
-      filter(Variable == "ccs_share_of_capturable_oil_emissions_captured") |>
-      select(Scenario, Run, Year, Captured = Value),
-    by = c("Scenario", "Run", "Year")) |>
-  transmute(Scenario, Run, Year, Share = Value * Captured)
+  filter(Variable == "fossil_energy_oil_endogenous_share_of_emissions_stored") |>
+  select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
   filter(Variable == "fossil_energy_oil_primary_fossil_energy_fuel") |>
@@ -483,12 +472,16 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Biomass|w/ CCS and w/o CCS -------------------------------
 
-# Biofuel secondary output split by the biofuel capture share; w/o CCS is the
-# complement, so the two always sum to the full series. Converted to
-# input-equivalent primary energy (divided by the fossil conversion
-# efficiency), like the other non-fossil primary variables.
+# Biofuel primary energy split by the biofuel capture share; w/o CCS is the
+# complement, so the two always sum to the full series. Biofuel is a fuel with a
+# real primary energy content in FRIDA (bio fuel primary energy = energy content
+# x production, zJ/yr), so it is used directly — the same treatment as the
+# fossil fuels. It was previously derived from bio fuel SECONDARY energy output
+# divided by the fossil conversion efficiency, which is the input-equivalent
+# convention that belongs only to the electricity-only carriers (solar, wind,
+# hydro, nuclear) that have no primary series in the model.
 CCS_Share_Bio <- All_Data |>
-  filter(Variable == "bio_fuel_energy_share_of_biofuel_emissions_capturable") |>
+  filter(Variable == "ccs_share_of_biofuel_emissions_capturable") |>
   inner_join(All_Data |>
       filter(Variable == "ccs_share_of_capturable_biofuel_emissions_captured") |>
       select(Scenario, Run, Year, Captured = Value),
@@ -496,20 +489,33 @@ CCS_Share_Bio <- All_Data |>
   transmute(Scenario, Run, Year, Share = Value * Captured)
 
 Bio_With_Share <- All_Data |>
-  filter(Variable == "bio_fuel_energy_bio_fuel_secondary_energy_output") |>
-  inner_join(CCS_Share_Bio, by = c("Scenario", "Run", "Year")) |>
-  inner_join(Fossil_Conversion_Efficiency, by = c("Scenario", "Run", "Year"))
+  filter(Variable == "bio_fuel_energy_bio_fuel_primary_energy") |>
+  inner_join(CCS_Share_Bio, by = c("Scenario", "Run", "Year"))
 
 Calc_Data <- Bio_With_Share |>
   mutate(Variable = "calc_primary_energy_biomass_wccs_ej",
-         Value    = Value * TWh_to_EJ / Efficiency * Share) |>
-  select(-Share, -Efficiency)
+         Value    = Value * ZJ_to_EJ * Share) |>
+  select(-Share)
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 Calc_Data <- Bio_With_Share |>
   mutate(Variable = "calc_primary_energy_biomass_woccs_ej",
-         Value    = Value * TWh_to_EJ / Efficiency * (1 - Share)) |>
-  select(-Share, -Efficiency)
+         Value    = Value * ZJ_to_EJ * (1 - Share)) |>
+  select(-Share)
+All_Data <- bind_rows(All_Data, Calc_Data)
+
+
+## ** Secondary Energy|Liquids|Biomass ----------------------------------------
+
+# FRIDA already computes the liquids split in the oil sector: bio fuel secondary
+# energy output = secondary energy output from liquid fuels x share of liquid
+# fuel that is bio, with Fossil_energy_oil taking the complementary (1 - share).
+# Secondary energy stays at output — no efficiency division.
+Calc_Data <- All_Data |>
+  filter(Variable == "bio_fuel_energy_bio_fuel_secondary_energy_output") |>
+  mutate(Variable = "calc_secondary_liquids_biomass_ej",
+         Value    = Value * TWh_to_EJ)
+
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 

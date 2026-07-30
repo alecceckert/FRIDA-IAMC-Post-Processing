@@ -139,12 +139,16 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Biomass --------------------------------------------------
 
-# Bio fuel secondary energy output (TWh/yr) -> primary-energy-equivalent EJ/yr,
-# dividing by FRIDA's fossil-fuel conversion efficiency (same basis as the other
-# non-fossil carriers).
-Calc_Data <- primary_energy_equivalent(
-  "bio_fuel_energy_bio_fuel_secondary_energy_output",
-  "calc_primary_energy_biomass_ej")
+# Bio fuel primary energy (zJ/yr) -> EJ/yr. Biofuel is a fuel with a real
+# primary energy content in FRIDA (energy content x production), so it is used
+# directly, the same as the coal/oil/gas primary series below. It was previously
+# derived from bio fuel SECONDARY energy output divided by the fossil conversion
+# efficiency; that input-equivalent convention belongs only to the
+# electricity-only carriers (nuclear, solar, wind) that have no primary series.
+Calc_Data <- All_Data |>
+  filter(Variable == "bio_fuel_energy_bio_fuel_primary_energy") |>
+  mutate(Variable = "calc_primary_energy_biomass_ej",
+         Value    = Value * ZJ_to_EJ)
 
 All_Data <- bind_rows(All_Data, Calc_Data)
 
