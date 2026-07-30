@@ -4,17 +4,17 @@ R code to process output files from FRIDA model to refactor and format in IAMC
 format. One pipeline serves two submissions, selected by `Variable_Set` in
 0-Main.R:
 
-- **Diagnostic** — the IAM community diagnostic assessment protocol (core
-  variables, per the protocol variable list below), deadline 1 Sep 2026.
-- **Compass** — the Scenario Compass variable set (83 variables), deadline
-  29 Sep 2026. Variable names and units follow the IAMC common-definitions
-  repository. Merged 2026-07-28 from the now-superseded
-  FRIDA-Scenario-Compass-Post-Processing repository.
+- **Diagnostic** — the IAM community diagnostic assessment protocol
+- **Compass** — the Scenario Compass variable names and units follow the IAMC common-definitions
+  repository
 
 Each set has its own mapping CSV (`Mapping/Variable-Mapping-<set>.csv`) and
 calculate script (`2-Calculate-<set>.R`, sharing `2-Constants.R`); stages
 1/3/4 are generic. Intermediates and outputs are suffixed with the set name,
 so both sets can be ingested side by side.
+
+Additional sets can be added by replicating the existing structure used for
+these two sets of calculations.
 
 ## Resources
 
@@ -39,7 +39,7 @@ https://github.com/IAMconsortium/common-definitions
 1. Place each FRIDA uncertainty-analysis output folder in Data-Input. Each
    folder holds the per-variable parameter-space files under
    `<folder>/detectedParmSpace/PerVarFiles-RDS/<frida_variable>.RDS`.
-2. List every input folder and its short scenario name in
+2. List every input folder and its short, official scenario name in
    `Data-Config/FolderScenarioMap.csv`.
 3. List the runs to report in `Data-Config/ScenarioInput.csv`. Each row's `id`
    is a parameter-space run id, a statistic name
