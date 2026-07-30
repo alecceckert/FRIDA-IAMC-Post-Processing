@@ -5,9 +5,10 @@ format. One pipeline serves two submissions, selected by `Variable_Set` in
 0-Main.R:
 
 - **Diagnostic** — the IAM community diagnostic assessment protocol (core
-  variables), deadline 1 Sep 2026.
-- **Compass** — the Scenario Compass variable set (74 variables), deadline
-  29 Sep 2026. Merged 2026-07-28 from the now-superseded
+  variables, per the protocol variable list below), deadline 1 Sep 2026.
+- **Compass** — the Scenario Compass variable set (83 variables), deadline
+  29 Sep 2026. Variable names and units follow the IAMC common-definitions
+  repository. Merged 2026-07-28 from the now-superseded
   FRIDA-Scenario-Compass-Post-Processing repository.
 
 Each set has its own mapping CSV (`Mapping/Variable-Mapping-<set>.csv`) and
@@ -17,11 +18,21 @@ so both sets can be ingested side by side.
 
 ## Resources
 
+**Diagnostic set**
+
 IAM community diagnostic assessment protocol
 https://zenodo.org/records/19554965
 
-Variable List
+Protocol variable list
 https://docs.google.com/spreadsheets/d/1WB_QZ2r5vusTELJ-DnpAbMNpIvoQk-cK85VCdgOuv_Y/edit?gid=211150776#gid=211150776
+
+**Compass set**
+
+Scenario Compass initiative
+https://scenariocompass.org/
+
+IAMC common-definitions (source of the Compass variable names and units)
+https://github.com/IAMconsortium/common-definitions
 
 ## Instructions
 
