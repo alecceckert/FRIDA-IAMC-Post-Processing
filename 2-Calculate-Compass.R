@@ -231,17 +231,6 @@ Calc_Data <- All_Data |>
 All_Data <- bind_rows(All_Data, Calc_Data)
 
 
-## ** Food Intake|Crops [per capita] -------------------------------------------------------
-
-# Scenario Compass. Direct crop demand per capita, PCal/Mp/yr -> kcal/cap/day.
-Calc_Data <- All_Data |>
-  filter(Variable == "food_demand_direct_crop_demand_per_capita") |>
-  mutate(Variable = "calc_food_intake_crops_kcal_cap_day",
-         Value    = Value * PCal_per_Mp_Yr_to_kcal_cap_day)
-
-All_Data <- bind_rows(All_Data, Calc_Data)
-
-
 ## ** Intensity|Final Energy ---------------------------------------------------
 
 # Final energy per unit of GDP. Numerator: Total Energy Output (TWh -> EJ), the
@@ -744,6 +733,12 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 #     series, Total Energy Output, is delivered energy and already feeds
 #     Final Energy; reporting it a second time under this name would mislead.
 #   - Health|Child Mortality, Agricultural Demand — no agreed FRIDA source.
+#   - Food Intake [per capita] + |Crops + |Livestock — dropped 2026-08-03
+#     (Jeff Rajah / Billy email): IAMC intake is food actually ingested, but
+#     every FRIDA food demand/consumption variable includes waste (FRIDA does
+#     not track food waste separately), so no FRIDA variable measures intake.
+#     Food Availability is unaffected — availability includes waste by
+#     definition.
 #   - CO2 Emissions / |Energy / |Food and Land Use — aliases of series already
 #     reported as Emissions|CO2 (Diagnostic set), Emissions|CO2|Energy and
 #     Emissions|CO2|AFOLU (this set).
