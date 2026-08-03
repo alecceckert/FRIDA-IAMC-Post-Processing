@@ -32,11 +32,13 @@ cat("Mapping entries:", nrow(Mapping), "\n\n")
 
 ## * Stage 3: Map #############################################################
 
-# Unmapped variables fall away. many-to-many is deliberate: one FRIDA/calc key
-# may feed several IAMC variables (Compass: Consumption -> Consumption +
-# Expenditure|Households; hydro -> Primary and Secondary Energy).
+# Unmapped variables fall away. Every mapping key is now unique (Consumption
+# and Expenditure|Households got separate calc_ keys when the government term
+# was added to Consumption), so the default join check guards against
+# accidental double-maps — give a new double-mapped IAMC variable its own
+# calc_ key instead of relaxing this to many-to-many.
 IAMC_Data <- All_Data |>
-  inner_join(Mapping, by = "Variable", relationship = "many-to-many") |>
+  inner_join(Mapping, by = "Variable") |>
   select(
     Scenario,
     Variable = `IAMC Variable`,

@@ -263,6 +263,18 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## filter(All_Data, Variable == "calc_final_energy_intensity_ej_busd2010", Year == 2020)
 
 
+## ** GDP|PPP -------------------------------------------------------------------
+
+# Real GDP in constant 2021 USD (bc$/yr) deflated to 2010 USD. Same series and
+# treatment as the Diagnostic set's GDP|PPP.
+Calc_Data <- All_Data |>
+  filter(Variable == "gdp_real_gdp_in_2021c") |>
+  mutate(Variable = "calc_gdp_ppp_busd2010",
+         Value    = Value * Defl_2021_to_2010)
+
+All_Data <- bind_rows(All_Data, Calc_Data)
+
+
 ## ** GDP|PPP [Growth Rate per capita] -----------------------------------------
 
 # Year-on-year percent growth of real GDP per capita, computed per Scenario x
@@ -472,21 +484,25 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Primary Energy|Biomass|w/ CCS and w/o CCS -------------------------------
 
-# Biofuel primary energy split by the biofuel capture share; w/o CCS is the
-# complement, so the two always sum to the full series. Biofuel is a fuel with a
-# real primary energy content in FRIDA (bio fuel primary energy = energy content
-# x production, zJ/yr), so it is used directly — the same treatment as the
-# fossil fuels. It was previously derived from bio fuel SECONDARY energy output
-# divided by the fossil conversion efficiency, which is the input-equivalent
-# convention that belongs only to the electricity-only carriers (solar, wind,
-# hydro, nuclear) that have no primary series in the model.
+# Biofuel primary energy split by the oil endogenous storage-allocation share;
+# w/o CCS is the complement, so the two always sum to the full series. Biofuel
+# is a fuel with a real primary energy content in FRIDA (bio fuel primary
+# energy = energy content x production, zJ/yr), so it is used directly — the
+# same treatment as the fossil fuels. It was previously derived from bio fuel
+# SECONDARY energy output divided by the fossil conversion efficiency, which is
+# the input-equivalent convention that belongs only to the electricity-only
+# carriers (solar, wind, hydro, nuclear) that have no primary series in the
+# model.
+# The share is Fossil energy oil.endogenous share of emissions stored (team
+# decision, meeting 2026-07/08): biofuel liquids are burned in the same
+# oil-type plants — FRIDA itself caps biofuel burning-emissions storage at the
+# oil parameters — so the oil storage-vs-tax allocation stands in for the
+# biomass energy w/ CCS split. Same basis as the fossil w/ CCS variables above.
+# This replaces the capture-based split (capturable 0.56 x realized BECC
+# capture rate), which covered only the process-emissions stream.
 CCS_Share_Bio <- All_Data |>
-  filter(Variable == "ccs_share_of_biofuel_emissions_capturable") |>
-  inner_join(All_Data |>
-      filter(Variable == "ccs_share_of_capturable_biofuel_emissions_captured") |>
-      select(Scenario, Run, Year, Captured = Value),
-    by = c("Scenario", "Run", "Year")) |>
-  transmute(Scenario, Run, Year, Share = Value * Captured)
+  filter(Variable == "fossil_energy_oil_endogenous_share_of_emissions_stored") |>
+  select(Scenario, Run, Year, Share = Value)
 
 Bio_With_Share <- All_Data |>
   filter(Variable == "bio_fuel_energy_bio_fuel_primary_energy") |>
@@ -543,12 +559,33 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 ## ** Consumption ---------------------------------------------------------------
 
-# Scenario Compass. Real private consumption (billion 2021 USD/yr) deflated.
-# Also mapped to Expenditure|Households. Distinct from the Policy Cost|
-# Consumption Loss calc, which awaits the baseline-minus-policy formulation.
+# Scenario Compass. Total final consumption = real private + real government
+# consumption, summed per Scenario x Run x Year, then deflated — IAMC
+# Consumption covers households plus government. The government series exists
+# from WorldTransFRIDA dev commit 4058791 (2026-07-30) onward, so this
+# variable reports "no data yet" against v3.1-beta1 output. Distinct from the
+# Policy Cost|Consumption Loss calc, which awaits the baseline-minus-policy
+# formulation.
 Calc_Data <- All_Data |>
   filter(Variable == "circular_flow_real_private_consumption_2021c") |>
+  inner_join(All_Data |>
+      filter(Variable == "circular_flow_real_government_consumption_2021c") |>
+      select(Scenario, Run, Year, Government = Value),
+    by = c("Scenario", "Run", "Year")) |>
   mutate(Variable = "calc_consumption_busd2010",
+         Value    = (Value + Government) * Defl_2021_to_2010) |>
+  select(-Government)
+
+All_Data <- bind_rows(All_Data, Calc_Data)
+
+
+## ** Expenditure|Households ----------------------------------------------------
+
+# Scenario Compass. Real private consumption only (households), deflated.
+# Split out of Consumption when the government term was added there.
+Calc_Data <- All_Data |>
+  filter(Variable == "circular_flow_real_private_consumption_2021c") |>
+  mutate(Variable = "calc_expenditure_households_busd2010",
          Value    = Value * Defl_2021_to_2010)
 
 All_Data <- bind_rows(All_Data, Calc_Data)
@@ -707,8 +744,6 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 #     series, Total Energy Output, is delivered energy and already feeds
 #     Final Energy; reporting it a second time under this name would mislead.
 #   - Health|Child Mortality, Agricultural Demand — no agreed FRIDA source.
-#   - Ocean|Acidification — no mapping identified; expected from outside the
-#     pipeline (RCMIP script); candidate: Ocean.Warm surface ocean pH.
 #   - CO2 Emissions / |Energy / |Food and Land Use — aliases of series already
 #     reported as Emissions|CO2 (Diagnostic set), Emissions|CO2|Energy and
 #     Emissions|CO2|AFOLU (this set).
