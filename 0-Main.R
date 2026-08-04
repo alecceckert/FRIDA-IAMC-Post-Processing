@@ -56,6 +56,13 @@ Region_Name <- "World"
 # ScenarioInput.csv. Set to a subset of the labels (e.g. c("p50")) to restrict.
 # Reported_Runs <- c("p0", "p50", "p100")
 
+# Report only the unlabelled headline run (blank subScenario, e.g. defaultRun),
+# so every output Scenario is a plain scenario name with no ":subScenario"
+# suffix — the usual shape for a Diagnostic submission. Set by
+# run-pipeline.sh --no-subscenarios; equivalent to Reported_Runs <- c(NA, "").
+if (Sys.getenv("FRIDA_NO_SUBSCENARIOS") == "1")
+  Reported_Runs <- c(NA_character_, "")
+
 # Year range for the output file. NA = full range present in the data.
 Year_Start <- NA
 Year_End   <- NA

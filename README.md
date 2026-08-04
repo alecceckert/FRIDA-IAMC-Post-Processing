@@ -48,12 +48,36 @@ https://github.com/IAMconsortium/common-definitions
    name. See the ScenarioInput.csv section below for all options.
 4. Set the run parameters in 0-Main.R (baseline scenario, region, year range).
 5. Run the pipeline, either way:
-   - `./run-pipeline.sh` — asks which variable set to build and runs stages 1-4.
-     Takes the answer as an argument too: `./run-pipeline.sh compass`,
-     `diagnostic`, or `both`.
+   - `./run-pipeline.sh` — asks which variable set to build, prints the run plan
+     for confirmation, and runs stages 1-4. Takes the answer as an argument too:
+     `./run-pipeline.sh compass`, `diagnostic`, or `both`.
    - Source 0-Main.R in RStudio, using the `Variable_Set` default set in that
      file. Rerun with the other set for the other submission — outputs do not
      overwrite each other.
+
+### The run plan
+
+Before running anything, `run-pipeline.sh` prints how the output will be
+produced and waits for confirmation:
+
+- every scenario in `FolderScenarioMap.csv`, the folder behind it, and whether
+  the sources its ids need are on disk (`ready`, or `SKIPPED` with the reason:
+  `no run folder`, `no PerVarFiles-RDS`, `no plotData`, `no <scenario>.csv`)
+- which scenario is the `Baseline_Scenario` — or a warning that the baseline
+  matches nothing in the run, which would empty the Policy Cost variables
+- every row of `ScenarioInput.csv` with the Scenario name it produces, e.g.
+  `C400-lin` for a blank label and `C400-lin:STAquantile50` for a labelled one
+- the output files, the scenario x series count, Region and year range
+
+`-y` / `--yes` skips the prompt. A batch job with no terminal prints the plan
+and proceeds without asking.
+
+**`--no-subscenarios`** reports only the rows with a blank `subScenario`, so
+every output Scenario is a plain name with no `:subScenario` suffix — the usual
+shape for a Diagnostic submission. It sets `Reported_Runs <- c(NA, "")` in
+0-Main.R via `FRIDA_NO_SUBSCENARIOS`; the equivalent when sourcing 0-Main.R
+directly is to set `Reported_Runs` yourself. The run stops with an explanation
+if no unlabelled row exists to report.
 
 ## Inputs
 
@@ -143,7 +167,9 @@ stages in order:
 - Path_Input — Data-Input holds the FRIDA output folders
 - Baseline_Scenario — reference scenario for loss-vs-baseline variables (default Current-Policies)
 - Region_Name — output Region column
-- Reported_Runs — subset of the ScenarioInput.csv sub-scenarios to report; unset = all
+- Reported_Runs — subset of the ScenarioInput.csv sub-scenarios to report; unset = all.
+  Set to `c(NA, "")` — which `FRIDA_NO_SUBSCENARIOS=1` does, from
+  run-pipeline.sh --no-subscenarios — to keep only the unlabelled headline run
 - Year_Start, Year_End — output year range; NA = full range in the data
 
 The parameter sets to read and the Model name come from

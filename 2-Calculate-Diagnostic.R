@@ -15,7 +15,10 @@
 #            Data-Output/1-All_Data-Diagnostic.RDS
 #   Outputs: Data-Output/2-All_Data_Calc-Diagnostic.RDS
 
-library(tidyverse)
+# The component packages, not the tidyverse meta-package: tidyverse also requires
+# dbplyr and ragg, and ragg needs system font libraries (fontconfig, harfbuzz)
+# that a cluster module does not provide, so it cannot be installed there.
+library(dplyr)
 options(scipen = 999)
 
 

@@ -2,19 +2,24 @@
 #
 # Description:
 #   End-to-end runner for the FRIDA IAMC post-processing pipeline. Asks which
-#   variable set to build — Compass or Diagnostic — installs any missing R
-#   package, then runs 0-Main.R (stages 1-4) with that set via Rscript. Every
-#   other parameter still comes from 0-Main.R and Data-Config/.
+#   variable set to build — Compass or Diagnostic — shows exactly how the output
+#   will be produced (which folder feeds which scenario, which series each one
+#   contributes, what lands in the Scenario column), asks for confirmation, then
+#   runs 0-Main.R (stages 1-4) via Rscript. Every other parameter still comes
+#   from 0-Main.R and Data-Config/.
 #
-#   Usage: ./run-pipeline.sh [compass|diagnostic|both] [--no-install]
-#          With no set argument it prompts for the choice, so a batch job
-#          (SLURM, no terminal) must name the set:
+#   Usage: ./run-pipeline.sh [compass|diagnostic|both] [options]
 #
-#            module load r
-#            ./run-pipeline.sh compass
+#     -y, --yes             skip the confirmation prompt
+#     --no-subscenarios     report only the unlabelled headline run, so no
+#                           Scenario:subScenario names appear (Diagnostic runs)
+#     --no-install          report missing R packages instead of installing them
 #
-#          --no-install reports missing R packages instead of installing them,
-#          for nodes with no outbound network.
+#   With no set argument it prompts for the choice, so a batch job (SLURM, no
+#   terminal) must name the set and is never prompted:
+#
+#     module load r
+#     ./run-pipeline.sh diagnostic --no-subscenarios
 #
 #   Inputs:  Data-Input/ (FRIDA output folders), Data-Config/*.csv
 #   Outputs: Data-Output/Data-Output-<set>.csv and .xlsx (plus stage
@@ -26,22 +31,34 @@ Script_Dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$Script_Dir"
 
 Install_Missing=1
+Assume_Yes=0
+No_SubScenarios=0
+
+Folder_Map="Data-Config/FolderScenarioMap.csv"
+Scenario_Input="Data-Config/ScenarioInput.csv"
+
+# Subdirectories 1-Ingest.R reads inside a scenario folder.
+PerVar_Subdir="detectedParmSpace/PerVarFiles-RDS"
+PlotData_Subdir="figures/CI-plots/completeEquallyWeighted/plotData"
 
 
 ## * Helpers ##################################################################
 
 Usage() {
   cat <<'EOF'
-Usage: ./run-pipeline.sh [compass|diagnostic|both] [--no-install]
+Usage: ./run-pipeline.sh [compass|diagnostic|both] [options]
 
-  compass       Scenario Compass variable set
-  diagnostic    IAM community diagnostic assessment protocol
-  both          run each set in turn (outputs do not overwrite each other)
+  compass             Scenario Compass variable set
+  diagnostic          IAM community diagnostic assessment protocol
+  both                run each set in turn (outputs do not overwrite each other)
 
-  --no-install  do not install missing R packages, just report them
+  -y, --yes           skip the confirmation prompt
+  --no-subscenarios   report only the unlabelled headline run, so every output
+                      Scenario is a plain name with no ":subScenario" suffix
+  --no-install        do not install missing R packages, just report them
 
 With no set argument the script prompts for the choice; a batch job with no
-terminal must name the set, e.g.  ./run-pipeline.sh compass
+terminal must name the set, e.g.  ./run-pipeline.sh compass --yes
 EOF
 }
 
@@ -81,29 +98,21 @@ Canonical_Set() {
   esac
 }
 
-Preflight() {
-  if ! command -v Rscript >/dev/null 2>&1; then
-    echo "ERROR: Rscript not found on PATH." >&2
-    # `module` is a shell function that a non-interactive shell may not see, so
-    # fall back to the variables the module systems export.
-    if command -v module >/dev/null 2>&1 ||
-       [[ -n ${MODULESHOME:-} || -n ${LMOD_CMD:-} ]]; then
-      echo "       This machine uses environment modules — load R first:" >&2
-      echo "         module load r          (module avail r lists the versions)" >&2
-    else
-      echo "       Install R: https://cran.r-project.org" >&2
-    fi
-    exit 1
-  fi
-
-  Ensure_Utf8_Locale
-  Ensure_R_Packages
-  Check_Input_Data
+# Value of a scalar parameter assigned in 0-Main.R, quotes stripped. Only used
+# for the plan display, so an unreadable value simply prints as given.
+R_Param() {
+  sed -n "s/^[[:space:]]*$1[[:space:]]*<-[[:space:]]*\(.*\)\$/\1/p" 0-Main.R |
+    tail -1 | sed 's/[[:space:]]*#.*$//; s/^"//; s/"$//'
 }
 
-# Every package the pipeline library()s: 1-Ingest/2-Calculate/3-Map load
-# tidyverse, 4-Format-Export also loads writexl for the .xlsx output.
-R_Packages=(tidyverse writexl)
+
+## * R packages ###############################################################
+
+# Every package the pipeline library()s. These are the tidyverse components the
+# stages actually use rather than the tidyverse meta-package, which additionally
+# requires dbplyr and ragg — ragg needs system font libraries (fontconfig,
+# harfbuzz) that a cluster module does not provide, so it cannot be built there.
+R_Packages=(dplyr tidyr readr stringr purrr tibble writexl)
 
 # Prints the subset of its arguments R cannot load, one per line.
 Missing_Packages() {
@@ -143,8 +152,8 @@ Ensure_R_Packages() {
   fi
 
   echo "Installing missing R package(s): $Listed"
-  echo "(no binaries on Linux — a first tidyverse install compiles its"
-  echo " dependencies and can take upwards of half an hour)"
+  echo "(no binaries on Linux — these are compiled from source, which on a first"
+  echo " install can take several minutes)"
   echo
 
   local Status=0
@@ -203,57 +212,239 @@ Ensure_R_Packages() {
 
   echo
   echo "R packages ready."
+  echo
 }
 
-# Every scenario in FolderScenarioMap.csv needs the source its ScenarioInput.csv
-# ids read from: the run folder under Data-Input/ for run and statistic ids, or
-# Data-Input/<scenario>.csv for csvFiles. Ingesting nothing fails mid-pipeline
-# with an empty-column error, so say so up front instead.
-Check_Input_Data() {
-  local Map="Data-Config/FolderScenarioMap.csv"
-  local Input="Data-Config/ScenarioInput.csv"
 
+## * Reading the run configuration ############################################
+
+# Filled by Inspect_Inputs, read by Show_Plan and Validate_Plan.
+Scenarios=(); Folders=(); Status_Note=(); Scenario_Ok=()
+Series_Ids=(); Series_Labels=(); Series_Models=(); Series_Kept=()
+Needs_Runs=0; Needs_Stats=0; Needs_Csv=0
+Ready_Count=0; Kept_Series=0
+
+# Works out what each config file asks for and which of it is actually on disk,
+# mirroring the source selection in 1-Ingest.R: numeric run ids come from the
+# per-variable RDS, statistic ids from the plotData CSVs, csvFiles from the
+# top-level Data-Input/<scenario>.csv.
+Inspect_Inputs() {
   local File
-  for File in "$Map" "$Input"; do
+  for File in "$Folder_Map" "$Scenario_Input"; do
     if [[ ! -f $File ]]; then
       echo "ERROR: $File not found (see README.md, Instructions steps 2-3)." >&2
       exit 1
     fi
   done
 
-  # Which kinds of id the run asks for; csvFiles is the only one not read from
-  # inside the scenario folder.
-  local Ids Needs_Folders=0 Needs_Csv=0
-  Ids=$(tail -n +2 "$Input" | tr -d '\r' | cut -d, -f1 | grep -v '^[[:space:]]*$' || true)
-  grep -qvx "csvFiles" <<<"$Ids" && Needs_Folders=1
-  grep -qx  "csvFiles" <<<"$Ids" && Needs_Csv=1
+  local Id Label Model Rest
+  while IFS=, read -r Id Label Model Rest; do
+    [[ -z $Id ]] && continue
 
-  local Row Folder Scenario Usable=0 Missing=()
-  while IFS=, read -r Folder Scenario Row; do
-    Folder="${Folder//$'\r'/}"; Scenario="${Scenario//$'\r'/}"
-    [[ -z $Folder ]] && continue
-    if { [[ $Needs_Folders -eq 1 ]] && [[ -d "Data-Input/$Folder" ]]; } ||
-       { [[ $Needs_Csv -eq 1 ]] && [[ -f "Data-Input/$Scenario.csv" ]]; }; then
-      Usable=$(( Usable + 1 ))
-    else
-      Missing+=("$Scenario")
+    Series_Ids+=("$Id")
+    Series_Labels+=("$Label")
+    Series_Models+=("$Model")
+
+    # --no-subscenarios keeps only the rows with a blank label, matching the
+    # Reported_Runs filter 0-Main.R applies for FRIDA_NO_SUBSCENARIOS.
+    if [[ $No_SubScenarios -eq 1 && -n $Label ]]; then
+      Series_Kept+=(0)
+      continue
     fi
-  done < <(tail -n +2 "$Map" | tr -d '\r')
+    Series_Kept+=(1)
+    Kept_Series=$(( Kept_Series + 1 ))
 
-  if [[ $Usable -eq 0 ]]; then
-    echo "ERROR: no input data found for any scenario in $Map." >&2
-    [[ $Needs_Folders -eq 1 ]] && echo "       Run folders expected under Data-Input/<folder>/." >&2
-    [[ $Needs_Csv -eq 1 ]] && echo "       csvFiles expects Data-Input/<scenario>.csv." >&2
+    case "$Id" in
+      csvFiles)        Needs_Csv=1 ;;
+      *[!0-9]*)        Needs_Stats=1 ;;   # a statistic name
+      *)               Needs_Runs=1 ;;    # all digits: a parameter-space run id
+    esac
+  done < <(tail -n +2 "$Scenario_Input" | tr -d '\r')
+
+  local Folder Scenario Ok Note
+  while IFS=, read -r Folder Scenario Rest; do
+    [[ -z $Folder ]] && continue
+
+    Ok=0
+    Note=""
+
+    if [[ $Needs_Runs -eq 1 || $Needs_Stats -eq 1 ]]; then
+      if [[ ! -d "Data-Input/$Folder" ]]; then
+        Note="no run folder"
+      elif [[ $Needs_Runs -eq 1 && ! -d "Data-Input/$Folder/$PerVar_Subdir" ]]; then
+        Note="no PerVarFiles-RDS"
+      elif [[ $Needs_Stats -eq 1 && ! -d "Data-Input/$Folder/$PlotData_Subdir" ]]; then
+        Note="no plotData"
+      else
+        Ok=1
+        Note="folder"
+      fi
+    fi
+
+    if [[ $Needs_Csv -eq 1 ]]; then
+      if [[ -f "Data-Input/$Scenario.csv" ]]; then
+        Ok=1
+        Note="${Note:+$Note + }$Scenario.csv"
+      elif [[ $Ok -eq 0 ]]; then
+        Note="${Note:+$Note, }no $Scenario.csv"
+      fi
+    fi
+
+    Scenarios+=("$Scenario")
+    Folders+=("$Folder")
+    Scenario_Ok+=("$Ok")
+    Status_Note+=("$Note")
+    if [[ $Ok -eq 1 ]]; then Ready_Count=$(( Ready_Count + 1 )); fi
+  done < <(tail -n +2 "$Folder_Map" | tr -d '\r')
+
+  # Explicit, so the function never inherits a false test as its exit status —
+  # under set -e that would end the run silently.
+  return 0
+}
+
+
+## * The plan #################################################################
+
+# Everything the run will do, before it does any of it: which folder feeds which
+# scenario and whether its data is there, which series each scenario contributes,
+# and the Scenario names those series produce in the output.
+Show_Plan() {
+  local Sets_Listed="$1"
+  local Baseline Region Year_Start Year_End Horizon
+  Baseline=$(R_Param Baseline_Scenario)
+  Region=$(R_Param Region_Name)
+  Year_Start=$(R_Param Year_Start)
+  Year_End=$(R_Param Year_End)
+
+  if [[ $Year_Start == "NA" && $Year_End == "NA" ]]; then
+    Horizon="full range in the data"
+  else
+    Horizon="$Year_Start to $Year_End"
+  fi
+
+  echo "================================================================"
+  echo " Run plan — $Sets_Listed variable set"
+  echo "================================================================"
+  echo
+  echo "Scenarios — $Folder_Map"
+  echo
+
+  local i Marker Sample_Scenario="" Baseline_Found=0
+  for i in $(seq 0 $(( ${#Scenarios[@]} - 1 ))); do
+    Marker=" "
+    if [[ ${Scenarios[$i]} == "$Baseline" ]]; then
+      Marker="*"
+      if [[ ${Scenario_Ok[$i]} -eq 1 ]]; then Baseline_Found=1; fi
+    fi
+    [[ ${Scenario_Ok[$i]} -eq 1 && -z $Sample_Scenario ]] && Sample_Scenario="${Scenarios[$i]}"
+
+    if [[ ${Scenario_Ok[$i]} -eq 1 ]]; then
+      printf '  %s %-18s ready   [%s]\n' "$Marker" "${Scenarios[$i]}" "${Status_Note[$i]}"
+    else
+      printf '  %s %-18s SKIPPED [%s]\n' "$Marker" "${Scenarios[$i]}" "${Status_Note[$i]}"
+    fi
+    printf '      %s\n' "${Folders[$i]}"
+  done
+
+  [[ -z $Sample_Scenario ]] && Sample_Scenario="${Scenarios[0]-Scenario}"
+
+  # A baseline that names no scenario present in this run is not fatal, but it
+  # empties the Policy Cost variables, so it must not pass unremarked.
+  if [[ $Baseline_Found -eq 1 ]]; then
+    echo "  * $Baseline is the baseline for the Policy Cost variables"
+  elif [[ -n $Baseline ]]; then
+    echo "  ! Baseline_Scenario \"$Baseline\" (0-Main.R) matches no scenario with"
+    echo "    data above — the Policy Cost variables will come out empty."
+  fi
+
+  echo
+  echo "Series — $Scenario_Input, read from every scenario above"
+  echo
+  printf '     %-14s %-16s %-12s %s\n' "id" "subScenario" "model" "output Scenario"
+  for i in $(seq 0 $(( ${#Series_Ids[@]} - 1 ))); do
+    local Label Shown Output
+    Label="${Series_Labels[$i]}"
+    Shown="${Label:-(none)}"
+    Output="$Sample_Scenario${Label:+:$Label}"
+
+    if [[ ${Series_Kept[$i]} -eq 1 ]]; then
+      printf '     %-14s %-16s %-12s %s\n' \
+             "${Series_Ids[$i]}" "$Shown" "${Series_Models[$i]}" "$Output"
+    else
+      printf '     %-14s %-16s %-12s %s\n' \
+             "${Series_Ids[$i]}" "$Shown" "-" "dropped (--no-subscenarios)"
+    fi
+  done
+
+  echo
+  echo "Output"
+  echo
+  local Set_Name
+  for Set_Name in $Sets_Listed; do
+    echo "     Data-Output/Data-Output-$Set_Name.csv and .xlsx"
+  done
+  echo "     $Ready_Count scenario(s) x $Kept_Series series = $(( Ready_Count * Kept_Series )) Scenario entries"
+  echo "     Region $Region, years $Horizon"
+  if [[ $No_SubScenarios -eq 1 ]]; then
+    echo "     Sub-scenarios OFF — no Scenario:subScenario names in the output"
+  fi
+  echo
+}
+
+Validate_Plan() {
+  if [[ $Kept_Series -eq 0 ]]; then
+    echo "ERROR: no series left to report." >&2
+    if [[ $No_SubScenarios -eq 1 ]]; then
+      echo "       --no-subscenarios keeps only rows with a blank subScenario," >&2
+      echo "       and every row in $Scenario_Input has a label." >&2
+      echo "       Add an unlabelled row (e.g. defaultRun) or drop the option." >&2
+    fi
+    exit 1
+  fi
+
+  if [[ $Ready_Count -eq 0 ]]; then
+    echo "ERROR: no input data found for any scenario in $Folder_Map." >&2
+    [[ $Needs_Runs -eq 1 ]] && echo "       Run ids need Data-Input/<folder>/$PerVar_Subdir." >&2
+    [[ $Needs_Stats -eq 1 ]] && echo "       Statistic ids need Data-Input/<folder>/$PlotData_Subdir." >&2
+    [[ $Needs_Csv -eq 1 ]] && echo "       csvFiles needs Data-Input/<scenario>.csv." >&2
     [[ -x setup-data-links.sh ]] && echo "       ./setup-data-links.sh links the run folders into Data-Input/." >&2
     exit 1
   fi
 
-  if [[ ${#Missing[@]} -gt 0 ]]; then
-    echo "WARNING: no data yet for ${#Missing[@]} scenario(s): ${Missing[*]}" >&2
-    echo "         They will be skipped; the other $Usable will still run." >&2
+  if [[ $Ready_Count -lt ${#Scenarios[@]} ]]; then
+    echo "WARNING: $(( ${#Scenarios[@]} - Ready_Count )) scenario(s) will be skipped for missing data." >&2
     echo >&2
   fi
 }
+
+# Asks before running. A batch job (no terminal) proceeds on the plan alone,
+# since there is nobody to answer; -y skips the prompt everywhere.
+Confirm_Plan() {
+  [[ $Assume_Yes -eq 1 ]] && return 0
+
+  if [[ ! -t 0 ]]; then
+    echo "No terminal to confirm on — proceeding with the plan above."
+    echo
+    return 0
+  fi
+
+  local Answer
+  while true; do
+    if ! read -r -p "Proceed? [Y/n]: " Answer; then
+      echo >&2
+      echo "ERROR: no answer given (input closed)." >&2
+      exit 1
+    fi
+    case "$(printf '%s' "${Answer:-y}" | tr '[:upper:]' '[:lower:]')" in
+      y|yes) return 0 ;;
+      n|no)  echo "Cancelled — nothing was run."; exit 0 ;;
+      *)     echo "  Please answer y or n." ;;
+    esac
+  done
+}
+
+
+## * Running a set ############################################################
 
 # Runs the whole pipeline for one variable set. Returns the Rscript exit status.
 Run_Set() {
@@ -275,7 +466,9 @@ Run_Set() {
   echo
 
   local Started=$SECONDS
-  if ! FRIDA_VARIABLE_SET="$Set_Name" Rscript 0-Main.R; then
+  if ! FRIDA_VARIABLE_SET="$Set_Name" \
+       FRIDA_NO_SUBSCENARIOS="$No_SubScenarios" \
+       Rscript 0-Main.R; then
     echo
     echo "FAILED: $Set_Name set (see the R output above)." >&2
     return 1
@@ -297,8 +490,10 @@ Choice=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h|--help|help) Usage; exit 0 ;;
-    --no-install)   Install_Missing=0; shift ;;
+    -h|--help|help)     Usage; exit 0 ;;
+    -y|--yes)           Assume_Yes=1; shift ;;
+    --no-subscenarios)  No_SubScenarios=1; shift ;;
+    --no-install)       Install_Missing=0; shift ;;
     -*)
       echo "ERROR: unknown option \"$1\"." >&2
       echo >&2
@@ -342,18 +537,39 @@ else
     fi
     echo "  Please answer 1, 2, or 3 (or compass / diagnostic / both)."
   done
+  echo
 fi
-
-
-## * Run pipeline #############################################################
-
-Preflight
 
 if [[ $Choice == "Both" ]]; then
   Sets=("Compass" "Diagnostic")
 else
   Sets=("$Choice")
 fi
+
+
+## * Run pipeline #############################################################
+
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "ERROR: Rscript not found on PATH." >&2
+  # `module` is a shell function that a non-interactive shell may not see, so
+  # fall back to the variables the module systems export.
+  if command -v module >/dev/null 2>&1 ||
+     [[ -n ${MODULESHOME:-} || -n ${LMOD_CMD:-} ]]; then
+    echo "       This machine uses environment modules — load R first:" >&2
+    echo "         module load r          (module avail r lists the versions)" >&2
+  else
+    echo "       Install R: https://cran.r-project.org" >&2
+  fi
+  exit 1
+fi
+
+Ensure_Utf8_Locale
+Ensure_R_Packages
+
+Inspect_Inputs
+Show_Plan "${Sets[*]}"
+Validate_Plan
+Confirm_Plan
 
 Failed=()
 for Set_Name in "${Sets[@]}"; do

@@ -8,7 +8,11 @@
 #   Outputs: Data-Output/3-IAMC_Data-<set>.RDS
 #            Columns: Scenario | Variable | Unit | Run | Year | Value
 
-library(tidyverse)
+# The component packages, not the tidyverse meta-package: tidyverse also requires
+# dbplyr and ragg, and ragg needs system font libraries (fontconfig, harfbuzz)
+# that a cluster module does not provide, so it cannot be installed there.
+library(dplyr)
+library(readr)
 options(scipen = 999)
 
 

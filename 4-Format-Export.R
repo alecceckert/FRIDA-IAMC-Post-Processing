@@ -8,7 +8,12 @@
 #   Outputs: Data-Output/Data-Output-<set>.csv and Data-Output/Data-Output-<set>.xlsx
 #            Columns: Model | Scenario | Region | Variable | Unit | <years>
 
-library(tidyverse)
+# The component packages, not the tidyverse meta-package: tidyverse also requires
+# dbplyr and ragg, and ragg needs system font libraries (fontconfig, harfbuzz)
+# that a cluster module does not provide, so it cannot be installed there.
+library(dplyr)
+library(tidyr)
+library(readr)
 library(writexl)
 options(scipen = 999)
 
