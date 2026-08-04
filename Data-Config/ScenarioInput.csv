@@ -1,7 +1,7 @@
 id,subScenario,model
 defaultRun,,FRIDA 3.1
-Quantile0.025,STAquantile2.5,FRIDA 3.1
-Quantile0.165,STAquantile16.5,FRIDA 3.1
-Quantile0.5,STAquantile50,FRIDA 3.1
-Quantile0.835,STAquantile83.5,FRIDA 3.1
-Quantile0.975,STAquantile97.5,FRIDA 3.1
+Quantile0.025,percentile2.5,FRIDA 3.1
+Quantile0.165,percentile16.5,FRIDA 3.1
+Quantile0.5,percentile50,FRIDA 3.1
+Quantile0.835,percentile83.5,FRIDA 3.1
+Quantile0.975,percentile97.5,FRIDA 3.1
