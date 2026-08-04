@@ -41,6 +41,17 @@ Path_Config <- "Data-Config"
 # (columns: id | subScenario | model). Each run id becomes one Run; the label is
 # appended to the scenario name in the output (Scenario:subScenario).
 
+# Ingest a single scenario from FolderScenarioMap.csv instead of every mapped
+# one, and report it under a different name. Only_Scenario matches the map's
+# `scenario` column; Rename_Scenario reaches only the Scenario column in the
+# output, so the input files are still read under the mapped name (csvFiles
+# reads Data-Input/<Only_Scenario>.csv). NA = every scenario, mapped name kept.
+# Set by run-pipeline.sh --emb.
+Only_Scenario   <- Sys.getenv("FRIDA_ONLY_SCENARIO")
+Rename_Scenario <- Sys.getenv("FRIDA_SCENARIO_NAME")
+if (!nzchar(Only_Scenario))   Only_Scenario   <- NA_character_
+if (!nzchar(Rename_Scenario)) Rename_Scenario <- NA_character_
+
 ## ** Calculation (2-Calculate.R)
 
 # Reference scenario for baseline-relative variables (Policy Cost|Consumption

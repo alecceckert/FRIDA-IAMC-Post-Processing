@@ -75,6 +75,26 @@ PlotData_Suffix <- "-fit uncertainty-completeEqually-weighted.csv"
 # and the "UA-v3-1-..." baseline folder -> "Current-Policies".
 Folder_Map <- read_csv(Path_FolderMap, show_col_types = FALSE)
 
+# Optional single-scenario run (run-pipeline.sh --emb). Both the filter and every
+# file lookup below stay on the mapped scenario name — csvFiles reads
+# Data-Input/<scenario>.csv — so a rename reaches only the Scenario column in the
+# output. A rename without a filter would relabel every scenario at once and
+# collapse them into one, so it is honoured only alongside a filter.
+if (!exists("Only_Scenario"))   Only_Scenario   <- NA_character_
+if (!exists("Rename_Scenario")) Rename_Scenario <- NA_character_
+if (is.na(Only_Scenario))       Rename_Scenario <- NA_character_
+
+if (!is.na(Only_Scenario)) {
+  Folder_Map <- filter(Folder_Map, scenario == Only_Scenario)
+  if (nrow(Folder_Map) == 0)
+    stop("Only_Scenario \"", Only_Scenario, "\" names no scenario in ", Path_FolderMap)
+  cat("Single scenario:", Only_Scenario,
+      if (is.na(Rename_Scenario)) "" else paste("— reported as", Rename_Scenario), "\n")
+}
+
+# The name a mapped scenario carries in the output.
+Scenario_Label <- function(name) if (is.na(Rename_Scenario)) name else Rename_Scenario
+
 
 ## ** Sub-sample runs to ingest
 
@@ -289,9 +309,9 @@ if (Need_Runs || Need_Stats) {
     }
 
     if (nrow(Scenario_Data) == 0) next
-    Scenario_Data <- mutate(Scenario_Data, Scenario = Scenario_Name)
+    Scenario_Data <- mutate(Scenario_Data, Scenario = Scenario_Label(Scenario_Name))
 
-    cat(Scenario_Name, "—",
+    cat(Scenario_Label(Scenario_Name), "—",
         length(To_Load), "variable(s):",
         paste(To_Load, collapse = ", "),
         "—", nrow(Scenario_Data), "rows\n")
@@ -321,9 +341,9 @@ if (Need_Csv) {
     }
 
     Csv_Data <- Ingest_ScenarioCsv(Csv_File, Csv_Input) |>
-      mutate(Scenario = Scenario_Name)
+      mutate(Scenario = Scenario_Label(Scenario_Name))
 
-    cat(Scenario_Name, "— csvFiles:",
+    cat(Scenario_Label(Scenario_Name), "— csvFiles:",
         length(unique(Csv_Data$Variable)), "variable(s) —", nrow(Csv_Data), "rows\n")
 
     All_Data <- bind_rows(All_Data, Csv_Data)

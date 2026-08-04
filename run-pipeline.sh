@@ -11,6 +11,9 @@
 #   Usage: ./run-pipeline.sh [compass|diagnostic|both] [options]
 #
 #     -y, --yes             skip the confirmation prompt
+#     --emb                 Compass only, from the EMB policy run alone, with
+#                           its Scenario reported as "EMB". Writes the usual
+#                           Data-Output-Compass files.
 #     --no-subscenarios     report only the unlabelled headline run, so no
 #                           Scenario:subScenario names appear (Diagnostic runs)
 #     --no-install          report missing R packages instead of installing them
@@ -33,6 +36,13 @@ cd "$Script_Dir"
 Install_Missing=1
 Assume_Yes=0
 No_SubScenarios=0
+Emb_Only=0
+
+# --emb reports the EMB policy run under this name instead of the one the folder
+# map gives it. The output paths do not change, so an --emb run overwrites the
+# Compass export the same way any other Compass run does.
+Emb_Label="EMB"
+Emb_Scenario=""     # the mapped scenario name of the EMB row, found at run time
 
 Folder_Map="Data-Config/FolderScenarioMap.csv"
 Scenario_Input="Data-Config/ScenarioInput.csv"
@@ -53,6 +63,10 @@ Usage: ./run-pipeline.sh [compass|diagnostic|both] [options]
   both                run each set in turn (outputs do not overwrite each other)
 
   -y, --yes           skip the confirmation prompt
+  --emb               ingest only the EMB policy run and report its Scenario as
+                      "EMB". Compass only, and implies compass when no set is
+                      named. Writes the usual Data-Output/Data-Output-Compass
+                      files, replacing any full Compass export already there.
   --no-subscenarios   report only the unlabelled headline run, so every output
                       Scenario is a plain name with no ":subScenario" suffix
   --no-install        do not install missing R packages, just report them
@@ -60,6 +74,22 @@ Usage: ./run-pipeline.sh [compass|diagnostic|both] [options]
 With no set argument the script prompts for the choice; a batch job with no
 terminal must name the set, e.g.  ./run-pipeline.sh compass --yes
 EOF
+}
+
+# The folder map row for the EMB policy run. Found by the EMB token in the folder
+# name because the scenario column calls it something else (Current-Policies),
+# which is exactly the name --emb replaces.
+Find_Emb_Scenario() {
+  Emb_Scenario=$(awk -F, '
+    NR > 1 && $1 ~ /(^|[-_])EMB([-_]|$)/ { gsub(/\r/, "", $2); print $2; exit }
+  ' "$Folder_Map")
+
+  if [[ -z $Emb_Scenario ]]; then
+    echo "ERROR: no EMB run in $Folder_Map." >&2
+    echo "       --emb looks for the row whose folder names the EMB policy," >&2
+    echo "       e.g. ...-policy_EMB-ClimateFeedback_On-..." >&2
+    exit 1
+  fi
 }
 
 # R reads these UTF-8 source files in the locale encoding, so a C/POSIX locale
@@ -218,8 +248,10 @@ Ensure_R_Packages() {
 
 ## * Reading the run configuration ############################################
 
-# Filled by Inspect_Inputs, read by Show_Plan and Validate_Plan.
-Scenarios=(); Folders=(); Status_Note=(); Scenario_Ok=()
+# Filled by Inspect_Inputs, read by Show_Plan and Validate_Plan. Scenarios holds
+# the mapped name every on-disk lookup uses; Scenario_Labels holds the name the
+# output will carry, which --emb changes.
+Scenarios=(); Scenario_Labels=(); Folders=(); Status_Note=(); Scenario_Ok=()
 Series_Ids=(); Series_Labels=(); Series_Models=(); Series_Kept=()
 Needs_Runs=0; Needs_Stats=0; Needs_Csv=0
 Ready_Count=0; Kept_Series=0
@@ -265,6 +297,11 @@ Inspect_Inputs() {
   while IFS=, read -r Folder Scenario Rest; do
     [[ -z $Folder ]] && continue
 
+    # --emb narrows the run to the single EMB row; the rest are not ingested.
+    if [[ $Emb_Only -eq 1 && $Scenario != "$Emb_Scenario" ]]; then
+      continue
+    fi
+
     Ok=0
     Note=""
 
@@ -291,6 +328,11 @@ Inspect_Inputs() {
     fi
 
     Scenarios+=("$Scenario")
+    if [[ $Emb_Only -eq 1 ]]; then
+      Scenario_Labels+=("$Emb_Label")
+    else
+      Scenario_Labels+=("$Scenario")
+    fi
     Folders+=("$Folder")
     Scenario_Ok+=("$Ok")
     Status_Note+=("$Note")
@@ -322,39 +364,56 @@ Show_Plan() {
     Horizon="$Year_Start to $Year_End"
   fi
 
+  # Only the Diagnostic set has Policy Cost variables, so only it reads
+  # Baseline_Scenario; naming a baseline on a Compass-only plan would mislead.
+  local Uses_Baseline=0
+  [[ $Sets_Listed == *Diagnostic* ]] && Uses_Baseline=1
+
   echo "================================================================"
   echo " Run plan — $Sets_Listed variable set"
   echo "================================================================"
   echo
-  echo "Scenarios — $Folder_Map"
+  if [[ $Emb_Only -eq 1 ]]; then
+    echo "Scenarios — $Folder_Map (--emb: the EMB row only)"
+  else
+    echo "Scenarios — $Folder_Map"
+  fi
   echo
 
   local i Marker Sample_Scenario="" Baseline_Found=0
   for i in $(seq 0 $(( ${#Scenarios[@]} - 1 ))); do
     Marker=" "
-    if [[ ${Scenarios[$i]} == "$Baseline" ]]; then
+    if [[ $Uses_Baseline -eq 1 && ${Scenario_Labels[$i]} == "$Baseline" ]]; then
       Marker="*"
       if [[ ${Scenario_Ok[$i]} -eq 1 ]]; then Baseline_Found=1; fi
     fi
-    [[ ${Scenario_Ok[$i]} -eq 1 && -z $Sample_Scenario ]] && Sample_Scenario="${Scenarios[$i]}"
+    [[ ${Scenario_Ok[$i]} -eq 1 && -z $Sample_Scenario ]] && Sample_Scenario="${Scenario_Labels[$i]}"
+
+    # Under --emb the mapped name is still what is read off disk, so show both.
+    local Shown_Scenario="${Scenario_Labels[$i]}"
+    if [[ ${Scenario_Labels[$i]} != "${Scenarios[$i]}" ]]; then
+      Shown_Scenario="${Scenario_Labels[$i]} (${Scenarios[$i]})"
+    fi
 
     if [[ ${Scenario_Ok[$i]} -eq 1 ]]; then
-      printf '  %s %-18s ready   [%s]\n' "$Marker" "${Scenarios[$i]}" "${Status_Note[$i]}"
+      printf '  %s %-32s ready   [%s]\n' "$Marker" "$Shown_Scenario" "${Status_Note[$i]}"
     else
-      printf '  %s %-18s SKIPPED [%s]\n' "$Marker" "${Scenarios[$i]}" "${Status_Note[$i]}"
+      printf '  %s %-32s SKIPPED [%s]\n' "$Marker" "$Shown_Scenario" "${Status_Note[$i]}"
     fi
     printf '      %s\n' "${Folders[$i]}"
   done
 
-  [[ -z $Sample_Scenario ]] && Sample_Scenario="${Scenarios[0]-Scenario}"
+  [[ -z $Sample_Scenario ]] && Sample_Scenario="${Scenario_Labels[0]-Scenario}"
 
   # A baseline that names no scenario present in this run is not fatal, but it
   # empties the Policy Cost variables, so it must not pass unremarked.
-  if [[ $Baseline_Found -eq 1 ]]; then
-    echo "  * $Baseline is the baseline for the Policy Cost variables"
-  elif [[ -n $Baseline ]]; then
-    echo "  ! Baseline_Scenario \"$Baseline\" (0-Main.R) matches no scenario with"
-    echo "    data above — the Policy Cost variables will come out empty."
+  if [[ $Uses_Baseline -eq 1 ]]; then
+    if [[ $Baseline_Found -eq 1 ]]; then
+      echo "  * $Baseline is the baseline for the Policy Cost variables"
+    elif [[ -n $Baseline ]]; then
+      echo "  ! Baseline_Scenario \"$Baseline\" (0-Main.R) matches no scenario with"
+      echo "    data above — the Policy Cost variables will come out empty."
+    fi
   fi
 
   echo
@@ -385,6 +444,10 @@ Show_Plan() {
   done
   echo "     $Ready_Count scenario(s) x $Kept_Series series = $(( Ready_Count * Kept_Series )) Scenario entries"
   echo "     Region $Region, years $Horizon"
+  if [[ $Emb_Only -eq 1 ]]; then
+    echo "     EMB only — $Emb_Scenario is reported as \"$Emb_Label\", and this"
+    echo "     one-scenario export replaces any full Compass export already there"
+  fi
   if [[ $No_SubScenarios -eq 1 ]]; then
     echo "     Sub-scenarios OFF — no Scenario:subScenario names in the output"
   fi
@@ -465,9 +528,19 @@ Run_Set() {
   echo "================================================================"
   echo
 
+  # --emb restricts the ingest to one scenario and renames it; both are empty
+  # otherwise, which 0-Main.R reads as "every scenario, mapped name kept".
+  local Only_Scenario="" Scenario_Name=""
+  if [[ $Emb_Only -eq 1 ]]; then
+    Only_Scenario="$Emb_Scenario"
+    Scenario_Name="$Emb_Label"
+  fi
+
   local Started=$SECONDS
   if ! FRIDA_VARIABLE_SET="$Set_Name" \
        FRIDA_NO_SUBSCENARIOS="$No_SubScenarios" \
+       FRIDA_ONLY_SCENARIO="$Only_Scenario" \
+       FRIDA_SCENARIO_NAME="$Scenario_Name" \
        Rscript 0-Main.R; then
     echo
     echo "FAILED: $Set_Name set (see the R output above)." >&2
@@ -477,7 +550,8 @@ Run_Set() {
   echo
   echo "Done: $Set_Name set in $(( SECONDS - Started ))s"
   local Output
-  for Output in "Data-Output/Data-Output-${Set_Name}.csv" "Data-Output/Data-Output-${Set_Name}.xlsx"; do
+  for Output in "Data-Output/Data-Output-${Set_Name}.csv" \
+                "Data-Output/Data-Output-${Set_Name}.xlsx"; do
     [[ -f $Output ]] && echo "  $Output ($(du -h "$Output" | cut -f1 | tr -d ' '))"
   done
   return 0
@@ -492,6 +566,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help|help)     Usage; exit 0 ;;
     -y|--yes)           Assume_Yes=1; shift ;;
+    --emb)              Emb_Only=1; shift ;;
     --no-subscenarios)  No_SubScenarios=1; shift ;;
     --no-install)       Install_Missing=0; shift ;;
     -*)
@@ -512,6 +587,8 @@ done
 
 if [[ -n $Choice ]]; then
   : # named on the command line
+elif [[ $Emb_Only -eq 1 ]]; then
+  Choice="Compass"   # --emb is a Compass option, so it answers the question
 elif [[ ! -t 0 ]]; then
   echo "ERROR: no variable set given and no terminal to prompt on." >&2
   echo "       A batch job must name it, e.g. ./run-pipeline.sh compass" >&2
@@ -544,6 +621,19 @@ if [[ $Choice == "Both" ]]; then
   Sets=("Compass" "Diagnostic")
 else
   Sets=("$Choice")
+fi
+
+# The Diagnostic set measures its Policy Cost variables against
+# Baseline_Scenario, which an EMB-only run leaves out of the data entirely, so
+# those variables would come out empty rather than merely restricted.
+if [[ $Emb_Only -eq 1 ]]; then
+  if [[ $Choice != "Compass" ]]; then
+    echo "ERROR: --emb applies to a compass run only, not \"$Choice\"." >&2
+    echo "       The Diagnostic set's Policy Cost variables are measured against" >&2
+    echo "       Baseline_Scenario, which an EMB-only run does not ingest." >&2
+    exit 1
+  fi
+  Find_Emb_Scenario
 fi
 
 
