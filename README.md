@@ -46,10 +46,14 @@ https://github.com/IAMconsortium/common-definitions
    (`mean`/`median`/`defaultRun`/`Quantile*`), or `csvFiles` (read from
    `Data-Input/<scenario>.csv`), paired with a sub-scenario label and the Model
    name. See the ScenarioInput.csv section below for all options.
-4. Choose the variable set (`Variable_Set <- "Diagnostic"` or `"Compass"`) and
-   set the remaining run parameters in 0-Main.R.
-5. Run the pipeline from 0-Main.R. Rerun with the other `Variable_Set` for the
-   other submission — outputs do not overwrite each other.
+4. Set the run parameters in 0-Main.R (baseline scenario, region, year range).
+5. Run the pipeline, either way:
+   - `./run-pipeline.sh` — asks which variable set to build and runs stages 1-4.
+     Takes the answer as an argument too: `./run-pipeline.sh compass`,
+     `diagnostic`, or `both`.
+   - Source 0-Main.R in RStudio, using the `Variable_Set` default set in that
+     file. Rerun with the other set for the other submission — outputs do not
+     overwrite each other.
 
 ## Inputs
 
@@ -93,7 +97,7 @@ can be mixed in the same file.
   the scenario folder at all.
 
 **`subScenario`** — the label appended to the scenario name in the output
-(`Scenario_subScenario`). Leave it **blank** to keep the scenario name unchanged
+(`Scenario:subScenario`). Leave it **blank** to keep the scenario name unchanged
 (no suffix) — useful for a headline run such as `defaultRun`.
 
 **`model`** — the Model name to stamp in the output.
@@ -116,13 +120,13 @@ not present, that piece is skipped with a note.
 
 The output format adheres to IAMC timeseries data format guidelines. Model comes
 from ScenarioInput.csv; the scenario name is the scenario label with the
-sub-scenario label appended (`Scenario_subScenario`), or the scenario label alone
+sub-scenario label appended (`Scenario:subScenario`), or the scenario label alone
 when the sub-scenario label is blank:
 
 | Model | Scenario | Region | Variable | Unit | YYYY1 | YYYY2 | YYYY... |
 |---|---|---|---|---|---|---|---|
 | Model Name | ScenarioA | World | Variable Name | Units | xx.x | xxx.x | ... |
-| Model Name | ScenarioA_STAquantile50 | World | Variable Name | Units | xx.x | xxx.x | ... |
+| Model Name | ScenarioA:STAquantile50 | World | Variable Name | Units | xx.x | xxx.x | ... |
 
 ## Process
 
@@ -133,7 +137,9 @@ stages in order:
 
 - Variable_Set — "Diagnostic" or "Compass"; selects the mapping CSV
   (Path_Mapping), the calculate script, and the file suffix (File_Suffix) used
-  on all intermediates and outputs
+  on all intermediates and outputs. Reads the `FRIDA_VARIABLE_SET` environment
+  variable when set (that is how run-pipeline.sh passes the choice), otherwise
+  uses the default written in 0-Main.R
 - Path_Input — Data-Input holds the FRIDA output folders
 - Baseline_Scenario — reference scenario for loss-vs-baseline variables (default Current-Policies)
 - Region_Name — output Region column

@@ -19,7 +19,12 @@
 # calculate script; stages 1/3/4 are generic and read Path_Mapping/File_Suffix.
 #   "Diagnostic" = IAM community diagnostic assessment protocol (core variables)
 #   "Compass"    = Scenario Compass variable set
-Variable_Set <- "Compass"
+# Edit the default below when sourcing this file directly (RStudio); run-pipeline.sh
+# overrides it through the FRIDA_VARIABLE_SET environment variable.
+Variable_Set <- Sys.getenv("FRIDA_VARIABLE_SET", unset = "Compass")
+
+if (!Variable_Set %in% c("Diagnostic", "Compass"))
+  stop("Variable_Set must be \"Diagnostic\" or \"Compass\", not \"", Variable_Set, "\"")
 
 Path_Mapping <- file.path("Mapping", paste0("Variable-Mapping-", Variable_Set, ".csv"))
 File_Suffix  <- paste0("-", Variable_Set)   # e.g. Data-Output/1-All_Data-Diagnostic.RDS
@@ -34,7 +39,7 @@ Path_Config <- "Data-Config"
 # The run ids to ingest, their sub-scenario labels (percentiles), and the Model
 # name are all listed in <Path_Config>/ScenarioInput.csv
 # (columns: id | subScenario | model). Each run id becomes one Run; the label is
-# appended to the scenario name in the output (Scenario_subScenario).
+# appended to the scenario name in the output (Scenario:subScenario).
 
 ## ** Calculation (2-Calculate.R)
 

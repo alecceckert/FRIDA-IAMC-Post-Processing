@@ -9,7 +9,7 @@
 #   Each file is a data.frame: column `id` (run id) plus one column per year.
 #   ScenarioInput.csv maps a chosen id to a sub-scenario label (e.g. STAp0..
 #   STAp100) that becomes the Run; Stage 4 appends it to the scenario name
-#   (Scenario_subScenario). An id is one of three kinds:
+#   (Scenario:subScenario). An id is one of three kinds:
 #     - a numeric run id  -> that run is read from the per-var RDS above.
 #     - a statistic name  -> read from the fit-uncertainty plotData CSV instead
 #       (mean, median, defaultRun, or any Quantile* column; median = Quantile0.5).
