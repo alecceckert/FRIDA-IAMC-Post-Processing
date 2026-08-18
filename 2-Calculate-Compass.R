@@ -659,7 +659,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 
 # Scenario Compass. Coal investments in fossil fuel extraction capital, deflated.
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_coal_investments_allocated_to_capacity_construction_in_fossil_fuel_extraction_capital") |>
+  filter(Variable == "energy_investments_coal_gross_investments_in_fossil_fuel_extraction_capital") |>
   mutate(Variable = "calc_investment_extraction_coal_busd2010",
          Value    = Value * USD_to_bUSD * Defl_2021_to_2010)
 
@@ -691,7 +691,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # Scenario Compass. Units blank in the mapping sheet for the four electricity
 # investment rows; FRIDA.stmx declares c$/Year — scale x 1e-9 then deflate.
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_investments_allocated_to_capacity_construction_in_solar_energy_capacity") |>
+  filter(Variable == "energy_investments_solar_gross_investments_in_energy_capacity") |>
   mutate(Variable = "calc_investment_electricity_solar_busd2010",
          Value    = Value * USD_to_bUSD * Defl_2021_to_2010)
 
@@ -701,7 +701,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Investment|Energy Supply|Electricity|Wind ---------------------------------------
 
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_investments_allocated_to_capacity_construction_in_wind_energy_capacity") |>
+  filter(Variable == "energy_investments_wind_gross_investments_in_energy_capacity") |>
   mutate(Variable = "calc_investment_electricity_wind_busd2010",
          Value    = Value * USD_to_bUSD * Defl_2021_to_2010)
 
@@ -711,7 +711,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Investment|Energy Supply|Electricity|Hydro --------------------------------------
 
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_investments_allocated_to_capacity_construction_in_hydropower_energy_capacity") |>
+  filter(Variable == "energy_investments_hydropower_gross_investments_in_energy_capacity") |>
   mutate(Variable = "calc_investment_electricity_hydro_busd2010",
          Value    = Value * USD_to_bUSD * Defl_2021_to_2010)
 
@@ -721,7 +721,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Investment|Energy Supply|Electricity|Nuclear ------------------------------------
 
 Calc_Data <- All_Data |>
-  filter(Variable == "energy_investments_investments_in_nuclear_capacity") |>
+  filter(Variable == "energy_investments_nuclear_gross_investments_in_energy_capacity") |>
   mutate(Variable = "calc_investment_electricity_nuclear_busd2010",
          Value    = Value * USD_to_bUSD * Defl_2021_to_2010)
 
