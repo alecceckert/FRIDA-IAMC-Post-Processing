@@ -413,7 +413,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # is equipped, and being constants they implied a fixed ~73% of coal energy was
 # CCS-equipped in every year and scenario.
 CCS_Share_Coal <- All_Data |>
-  filter(Variable == "fossil_energy_coal_endogenous_share_of_emissions_stored") |>
+  filter(Variable == "fossil_energy_coal_share_of_emissions_stored") |>
   select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
@@ -431,7 +431,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Primary Energy|Gas|w/ CCS -----------------------------------------------
 
 CCS_Share_Gas <- All_Data |>
-  filter(Variable == "fossil_energy_gas_endogenous_share_of_emissions_stored") |>
+  filter(Variable == "fossil_energy_gas_share_of_emissions_stored") |>
   select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
@@ -447,7 +447,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 ## ** Primary Energy|Oil|w/ CCS -----------------------------------------------
 
 CCS_Share_Oil <- All_Data |>
-  filter(Variable == "fossil_energy_oil_endogenous_share_of_emissions_stored") |>
+  filter(Variable == "fossil_energy_oil_share_of_emissions_stored") |>
   select(Scenario, Run, Year, Share = Value)
 
 Calc_Data <- All_Data |>
@@ -485,7 +485,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # the input-equivalent convention that belongs only to the electricity-only
 # carriers (solar, wind, hydro, nuclear) that have no primary series in the
 # model.
-# The share is Fossil energy oil.endogenous share of emissions stored (team
+# The share is Fossil energy oil.share of emissions stored (team
 # decision, meeting 2026-07/08): biofuel liquids are burned in the same
 # oil-type plants — FRIDA itself caps biofuel burning-emissions storage at the
 # oil parameters — so the oil storage-vs-tax allocation stands in for the
@@ -493,7 +493,7 @@ All_Data <- bind_rows(All_Data, Calc_Data)
 # This replaces the capture-based split (capturable 0.56 x realized BECC
 # capture rate), which covered only the process-emissions stream.
 CCS_Share_Bio <- All_Data |>
-  filter(Variable == "fossil_energy_oil_endogenous_share_of_emissions_stored") |>
+  filter(Variable == "fossil_energy_oil_share_of_emissions_stored") |>
   select(Scenario, Run, Year, Share = Value)
 
 Bio_With_Share <- All_Data |>
